@@ -2,12 +2,13 @@ import pygame
 import random
 from .constants import (
     WINDOW_WIDTH, WINDOW_HEIGHT, FPS, UI_BG,
-    STATE_INPUT, STATE_BATTLE, STATE_VICTORY
+    STATE_INPUT, STATE_BATTLE, STATE_HEAT_TRANSITION, STATE_VICTORY, STATE_LEADERBOARD
 )
 from .beyblade import Beyblade, check_collision, resolve_collision
 from .arena import Arena
 from .effects import EffectsManager
-from .ui import InputScreen, BattleHUD, VictoryScreen, create_fonts
+from .avatar import AvatarManager
+from .ui import InputScreen, BattleHUD, HeatTransitionScreen, VictoryScreen, LeaderboardScreen, create_fonts
 
 
 class Game:
@@ -29,20 +30,25 @@ class Game:
 
         self.arena = Arena()
         self.effects = EffectsManager()
+        self.avatar_manager = AvatarManager()
 
         self.input_screen = InputScreen(self.fonts)
         self.battle_hud = BattleHUD(self.fonts)
+        self.heat_transition_screen = HeatTransitionScreen(self.fonts)
         self.victory_screen = VictoryScreen(self.fonts)
+        self.leaderboard_screen = LeaderboardScreen(self.fonts)
 
-        # Update all layouts for actual window size (in case WM resized us)
-        if self.window_width != WINDOW_WIDTH or self.window_height != WINDOW_HEIGHT:
-            self.arena.update_center(self.window_width, self.window_height)
-            self.input_screen.update_layout(self.window_width, self.window_height)
-            self.battle_hud.update_layout(self.window_width, self.window_height)
-            self.victory_screen.update_layout(self.window_width, self.window_height)
+        # Always update layouts for actual window size
+        self.arena.update_center(self.window_width, self.window_height)
+        self.input_screen.update_layout(self.window_width, self.window_height)
+        self.battle_hud.update_layout(self.window_width, self.window_height)
+        self.heat_transition_screen.update_layout(self.window_width, self.window_height)
+        self.victory_screen.update_layout(self.window_width, self.window_height)
+        self.leaderboard_screen.update_layout(self.window_width, self.window_height)
 
         self.beyblades: list[Beyblade] = []
-        self.eliminated: list[str] = []
+        self.eliminated: list[str] = []  # Current heat eliminations
+        self.all_eliminated: list[str] = []  # Full tournament elimination order
         self.state = STATE_INPUT
         self.speed_multiplier = 1
         self.winner = None
@@ -61,6 +67,7 @@ class Game:
     def start_battle(self, movie_list: list):
         """Initialize a new tournament with the given movie list."""
         self.eliminated.clear()
+        self.all_eliminated.clear()
         self.effects.clear()
         self.winner = None
         self.round_number = 1
@@ -115,6 +122,9 @@ class Game:
             beyblade.vy = vy
             self.beyblades.append(beyblade)
 
+        # Create avatars for this batch of beyblades
+        self.avatar_manager.create_avatars(self.beyblades, self.arena)
+
     def start_new_round(self):
         """Start a new round with surviving beyblades."""
         self.round_number += 1
@@ -154,16 +164,45 @@ class Game:
                 for beyblade in self.beyblades:
                     beyblade.x += dx
                     beyblade.y += dy
+                # Update avatar positions
+                self.avatar_manager.update_positions(self.arena)
                 # Update UI components
                 self.input_screen.update_layout(event.w, event.h)
                 self.battle_hud.update_layout(event.w, event.h)
+                self.heat_transition_screen.update_layout(event.w, event.h)
                 self.victory_screen.update_layout(event.w, event.h)
+                self.leaderboard_screen.update_layout(event.w, event.h)
+
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
+                # Toggle fullscreen
+                self.fullscreen = not getattr(self, 'fullscreen', False)
+                if self.fullscreen:
+                    self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+                else:
+                    self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
+                # Update window dimensions and layouts
+                actual_size = self.screen.get_size()
+                self.window_width = actual_size[0]
+                self.window_height = actual_size[1]
+                dx, dy = self.arena.update_center(self.window_width, self.window_height)
+                for beyblade in self.beyblades:
+                    beyblade.x += dx
+                    beyblade.y += dy
+                self.avatar_manager.update_positions(self.arena)
+                self.input_screen.update_layout(self.window_width, self.window_height)
+                self.battle_hud.update_layout(self.window_width, self.window_height)
+                self.heat_transition_screen.update_layout(self.window_width, self.window_height)
+                self.victory_screen.update_layout(self.window_width, self.window_height)
+                self.leaderboard_screen.update_layout(self.window_width, self.window_height)
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_clicked = True
 
             if self.state == STATE_INPUT:
                 self.input_screen.handle_event(event)
+
+            if self.state == STATE_LEADERBOARD:
+                self.leaderboard_screen.handle_scroll(event)
 
         return mouse_clicked
 
@@ -188,10 +227,23 @@ class Game:
             for _ in range(self.speed_multiplier):
                 self.update_battle()
 
+        elif self.state == STATE_HEAT_TRANSITION:
+            self.heat_transition_screen.update(mouse_pos)
+            if self.heat_transition_screen.check_continue(mouse_pos, mouse_clicked):
+                self._continue_after_heat()
+
         elif self.state == STATE_VICTORY:
             self.victory_screen.update(mouse_pos)
-            if self.victory_screen.check_restart(mouse_pos, mouse_clicked):
+            if self.victory_screen.check_leaderboard(mouse_pos, mouse_clicked):
+                self.leaderboard_screen.set_rankings(self.winner, self.all_eliminated)
+                self.state = STATE_LEADERBOARD
+
+        elif self.state == STATE_LEADERBOARD:
+            self.leaderboard_screen.update(mouse_pos)
+            if self.leaderboard_screen.check_play_again(mouse_pos, mouse_clicked):
                 self.state = STATE_INPUT
+            elif self.leaderboard_screen.check_quit(mouse_pos, mouse_clicked):
+                self.running = False
 
     def update_battle(self):
         # Update all beyblades
@@ -233,6 +285,7 @@ class Game:
         for beyblade in self.beyblades:
             if not beyblade.alive and beyblade.name not in self.eliminated:
                 self.eliminated.append(beyblade.name)
+                self.all_eliminated.append(beyblade.name)  # Track for leaderboard
                 self.effects.spawn_knockout_effect(
                     beyblade.x, beyblade.y, beyblade.color, beyblade.name
                 )
@@ -240,6 +293,10 @@ class Game:
 
         # Update effects
         self.effects.update()
+
+        # Update avatars
+        self.avatar_manager.sync_with_beyblades(self.beyblades)
+        self.avatar_manager.update()
 
         # Check for heat/battle end
         alive_beyblades = [b for b in self.beyblades if b.alive]
@@ -292,11 +349,16 @@ class Game:
         if self.is_finals or len(self.heats) == 1:
             # Tournament over - we have a winner
             if survivor_names:
+                self.winner = survivor_names[0]
                 self.victory_screen.set_winner(survivor_names[0])
-            elif self.eliminated:
-                self.victory_screen.set_winner(self.eliminated[-1])
+            elif self.all_eliminated:
+                self.winner = self.all_eliminated[-1]
+                self.victory_screen.set_winner(self.all_eliminated[-1])
             else:
+                self.winner = "No Winner"
                 self.victory_screen.set_winner("No Winner")
+            self.effects.sound.play('victory')
+            self.avatar_manager.sync_with_beyblades(self.beyblades, winner_name=self.winner)
             self.state = STATE_VICTORY
         else:
             # Add survivors to heat winners
@@ -304,12 +366,35 @@ class Game:
 
             # Check if more heats remain
             if self.current_heat < len(self.heats) - 1:
-                # Start next heat
-                self._start_heat(self.current_heat + 1)
+                # Show transition screen before next heat
+                self.heat_transition_screen.set_advancers(
+                    survivor_names,
+                    self.current_heat + 1,
+                    len(self.heats),
+                    is_to_finals=False
+                )
+                self.pending_next_heat = self.current_heat + 1
+                self.pending_is_finals = False
+                self.state = STATE_HEAT_TRANSITION
             else:
-                # All heats done - start finals
-                self.is_finals = True
-                self._start_heat(0)
+                # All heats done - show transition to finals
+                self.heat_transition_screen.set_advancers(
+                    self.heat_winners,
+                    len(self.heats),
+                    len(self.heats),
+                    is_to_finals=True
+                )
+                self.pending_next_heat = 0
+                self.pending_is_finals = True
+                self.state = STATE_HEAT_TRANSITION
+
+    def _continue_after_heat(self):
+        """Continue to the next heat or finals after transition screen."""
+        if self.pending_is_finals:
+            self.is_finals = True
+        self.eliminated.clear()  # Clear heat eliminations for next heat
+        self._start_heat(self.pending_next_heat)
+        self.state = STATE_BATTLE
 
     def draw(self):
         if self.state == STATE_INPUT:
@@ -319,15 +404,18 @@ class Game:
             self.screen.fill(UI_BG)
             self.arena.draw(self.screen)
 
+            # Draw avatars around the arena
+            self.avatar_manager.draw(self.screen)
+
             # Draw beyblades (alive ones on top)
             dead_beyblades = [b for b in self.beyblades if not b.alive]
             alive_beyblades = [b for b in self.beyblades if b.alive]
 
             for beyblade in dead_beyblades:
-                beyblade.draw(self.screen, self.fonts['tiny'])
+                beyblade.draw(self.screen, self.fonts['small'])
 
             for beyblade in alive_beyblades:
-                beyblade.draw(self.screen, self.fonts['tiny'])
+                beyblade.draw(self.screen, self.fonts['small'])
 
             # Draw effects
             self.effects.draw(self.screen, self.fonts['medium'])
@@ -335,24 +423,45 @@ class Game:
             # Draw HUD
             alive_count = len(alive_beyblades)
             total_count = len(self.beyblades)
+            survivor_names = [b.name for b in alive_beyblades]
             heat_info = None
             if len(self.heats) > 1:
                 if self.is_finals:
                     heat_info = ("FINALS", len(self.heat_winners))
                 else:
                     heat_info = (f"Heat {self.current_heat + 1}/{len(self.heats)}", len(self.heats[self.current_heat]))
-            self.battle_hud.draw(self.screen, alive_count, total_count, self.eliminated, self.round_number, heat_info)
+            self.battle_hud.draw(self.screen, alive_count, total_count, self.eliminated, survivor_names, self.round_number, heat_info)
+
+        elif self.state == STATE_HEAT_TRANSITION:
+            # Draw the arena state behind transition screen
+            self.screen.fill(UI_BG)
+            self.arena.draw(self.screen)
+
+            # Draw avatars around the arena
+            self.avatar_manager.draw(self.screen)
+
+            for beyblade in self.beyblades:
+                beyblade.draw(self.screen, self.fonts['small'])
+
+            # Draw transition overlay
+            self.heat_transition_screen.draw(self.screen)
 
         elif self.state == STATE_VICTORY:
             # Draw the final arena state behind victory screen
             self.screen.fill(UI_BG)
             self.arena.draw(self.screen)
 
+            # Draw avatars around the arena
+            self.avatar_manager.draw(self.screen)
+
             for beyblade in self.beyblades:
-                beyblade.draw(self.screen, self.fonts['tiny'])
+                beyblade.draw(self.screen, self.fonts['small'])
 
             # Draw victory overlay
             self.victory_screen.draw(self.screen)
+
+        elif self.state == STATE_LEADERBOARD:
+            self.leaderboard_screen.draw(self.screen)
 
         pygame.display.flip()
 

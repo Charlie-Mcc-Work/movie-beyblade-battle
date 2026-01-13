@@ -19,8 +19,8 @@ class Arena:
         self.center_x = window_width // 2
         self.center_y = window_height // 2
         # Scale radius to fit window (use smaller dimension, leave margin)
-        max_radius = min(window_width, window_height) // 2 - 50
-        self.radius = min(self.base_radius, max_radius)
+        max_radius = min(window_width, window_height) // 2 - 80
+        self.radius = max(200, max_radius)  # Min 200, grow with window
         return (self.center_x - old_center_x, self.center_y - old_center_y)
 
     def apply_boundary(self, beyblade: Beyblade):
@@ -123,7 +123,7 @@ class Arena:
 
             # Tangential velocity (perpendicular to radius, like spinning in)
             # All spin same direction for realistic orbiting, with speed variation
-            speed = 5 + (i % 4) * 1.5  # Vary initial speeds (5-9.5)
+            speed = 8 + (i % 4) * 2  # Vary initial speeds (8-14)
             vx = -math.sin(angle) * speed
             vy = math.cos(angle) * speed
 

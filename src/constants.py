@@ -5,7 +5,7 @@ FPS = 60
 
 # Arena settings
 ARENA_CENTER = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
-ARENA_RADIUS = 350
+ARENA_RADIUS = 525
 
 # Beyblade settings
 BEYBLADE_RADIUS = 25
@@ -22,8 +22,8 @@ STAT_RANGES = {
 }
 
 # Physics
-MAX_SPEED = 10
-FRICTION = 0.99
+MAX_SPEED = 15
+FRICTION = 0.992
 COLLISION_ELASTICITY = 0.8
 BASE_DAMAGE_MULTIPLIER = 0.5
 KNOCKBACK_FORCE = 2.0
@@ -102,10 +102,16 @@ FONT_SIZES = {
 # Game states
 STATE_INPUT = 'input'
 STATE_BATTLE = 'battle'
+STATE_HEAT_TRANSITION = 'heat_transition'
 STATE_VICTORY = 'victory'
+STATE_LEADERBOARD = 'leaderboard'
 
 # File loading
 MOVIE_LIST_FILE = "movies.txt"
+
+# Avatar settings
+AVATAR_DISTANCE_FROM_ARENA = 60  # Pixels outside arena edge
+AVATAR_ELIMINATED_DIM = 0.5  # Color multiplier when eliminated
 
 # Abilities
 ABILITY_CHANCE = 0.30  # 30% chance to have an ability

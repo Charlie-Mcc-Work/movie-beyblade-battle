@@ -288,7 +288,7 @@ class BattleHUD:
             return True
         return False
 
-    def draw(self, screen: pygame.Surface, alive_count: int, total_count: int, eliminated: list, round_number: int = 1, heat_info: tuple = None):
+    def draw(self, screen: pygame.Surface, alive_count: int, total_count: int, eliminated: list, survivors: list = None, round_number: int = 1, heat_info: tuple = None):
         # Top bar background
         pygame.draw.rect(screen, (0, 0, 0, 180), (0, 0, self.window_width, 50))
 
@@ -324,30 +324,138 @@ class BattleHUD:
         # Mute button
         self.mute_button.draw(screen)
 
-        # Eliminated list (right side panel)
+        # Right side panels
+        panel_width = 200
+        panel_x = self.window_width - panel_width - 10
+        current_y = 60
+
+        # Eliminated list
         if eliminated:
-            panel_width = 200
-            panel_x = self.window_width - panel_width - 10
-            panel_y = 60
-            panel_height = min(400, len(eliminated) * 25 + 40)
+            max_elim_show = min(12, len(eliminated))
+            panel_height = max_elim_show * 20 + 35
 
             # Panel background
             panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
             panel_surface.fill((0, 0, 0, 150))
-            screen.blit(panel_surface, (panel_x, panel_y))
+            screen.blit(panel_surface, (panel_x, current_y))
 
             # Title
             elim_title = self.fonts['small'].render("ELIMINATED", True, (255, 100, 100))
-            screen.blit(elim_title, (panel_x + 10, panel_y + 5))
+            screen.blit(elim_title, (panel_x + 10, current_y + 5))
 
-            # List (show most recent first, limited number)
-            y = panel_y + 30
-            max_show = min(15, len(eliminated))
-            for name in reversed(eliminated[-max_show:]):
+            # List (show most recent first)
+            y = current_y + 28
+            for name in reversed(eliminated[-max_elim_show:]):
                 display_name = name if len(name) <= 22 else name[:19] + "..."
                 name_surface = self.fonts['tiny'].render(display_name, True, UI_TEXT_DIM)
                 screen.blit(name_surface, (panel_x + 10, y))
-                y += 22
+                y += 20
+
+            current_y += panel_height + 10
+
+        # Survivors list
+        if survivors:
+            max_surv_show = min(12, len(survivors))
+            panel_height = max_surv_show * 20 + 35
+
+            # Panel background
+            panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+            panel_surface.fill((0, 0, 0, 150))
+            screen.blit(panel_surface, (panel_x, current_y))
+
+            # Title
+            surv_title = self.fonts['small'].render("SURVIVORS", True, (100, 255, 100))
+            screen.blit(surv_title, (panel_x + 10, current_y + 5))
+
+            # List
+            y = current_y + 28
+            for name in survivors[:max_surv_show]:
+                display_name = name if len(name) <= 22 else name[:19] + "..."
+                name_surface = self.fonts['tiny'].render(display_name, True, (150, 255, 150))
+                screen.blit(name_surface, (panel_x + 10, y))
+                y += 20
+
+
+class HeatTransitionScreen:
+    """Screen shown between heats to display who advances."""
+    def __init__(self, fonts: dict):
+        self.fonts = fonts
+        self.window_width = WINDOW_WIDTH
+        self.window_height = WINDOW_HEIGHT
+        center_x = WINDOW_WIDTH // 2
+        self.continue_button = Button(center_x - 110, 600, 220, 50, "CONTINUE", fonts['medium'])
+        self.advancers = []
+        self.heat_number = 0
+        self.total_heats = 0
+        self.is_to_finals = False
+        self.animation_timer = 0
+
+    def update_layout(self, window_width: int, window_height: int):
+        self.window_width = window_width
+        self.window_height = window_height
+        center_x = window_width // 2
+        self.continue_button.rect = pygame.Rect(center_x - 110, window_height - 100, 220, 50)
+
+    def set_advancers(self, advancers: list, heat_number: int, total_heats: int, is_to_finals: bool = False):
+        self.advancers = advancers
+        self.heat_number = heat_number
+        self.total_heats = total_heats
+        self.is_to_finals = is_to_finals
+        self.animation_timer = 0
+
+    def update(self, mouse_pos: tuple):
+        self.animation_timer += 1
+        self.continue_button.update(mouse_pos)
+
+    def check_continue(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        return self.continue_button.is_clicked(mouse_pos, mouse_clicked)
+
+    def draw(self, screen: pygame.Surface):
+        # Darken background
+        overlay = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 220))
+        screen.blit(overlay, (0, 0))
+
+        center_x = self.window_width // 2
+        center_y = self.window_height // 2
+
+        # Title
+        if self.is_to_finals:
+            title_text = "ADVANCING TO FINALS!"
+            title_color = (255, 215, 0)
+        else:
+            title_text = f"HEAT {self.heat_number} COMPLETE!"
+            title_color = (100, 200, 255)
+
+        title = self.fonts['title'].render(title_text, True, title_color)
+        title_rect = title.get_rect(center=(center_x, 80))
+        screen.blit(title, title_rect)
+
+        # Subtitle
+        if not self.is_to_finals:
+            subtitle_text = f"Top {len(self.advancers)} advance to the next round"
+        else:
+            subtitle_text = f"{len(self.advancers)} contestants will battle in the finals!"
+        subtitle = self.fonts['medium'].render(subtitle_text, True, UI_TEXT_DIM)
+        subtitle_rect = subtitle.get_rect(center=(center_x, 130))
+        screen.blit(subtitle, subtitle_rect)
+
+        # Advancers list
+        start_y = 180
+        for i, name in enumerate(self.advancers):
+            # Animate entry
+            delay = i * 10
+            if self.animation_timer > delay:
+                alpha = min(1.0, (self.animation_timer - delay) / 20)
+                display_name = name if len(name) <= 35 else name[:32] + "..."
+
+                color = tuple(int(c * alpha) for c in (100, 255, 100))
+                text = self.fonts['medium'].render(f"★ {display_name}", True, color)
+                text_rect = text.get_rect(center=(center_x, start_y + i * 35))
+                screen.blit(text, text_rect)
+
+        # Continue button
+        self.continue_button.draw(screen)
 
 
 class VictoryScreen:
@@ -356,7 +464,7 @@ class VictoryScreen:
         self.window_width = WINDOW_WIDTH
         self.window_height = WINDOW_HEIGHT
         center_x = WINDOW_WIDTH // 2
-        self.play_again_button = Button(center_x - 110, 550, 220, 50, "PLAY AGAIN", fonts['medium'])
+        self.leaderboard_button = Button(center_x - 130, 550, 260, 50, "SHOW LEADERBOARD", fonts['medium'])
         self.winner_name = ""
         self.animation_timer = 0
 
@@ -366,7 +474,7 @@ class VictoryScreen:
         self.window_height = window_height
         center_x = window_width // 2
         center_y = window_height // 2
-        self.play_again_button.rect = pygame.Rect(center_x - 110, center_y + 150, 220, 50)
+        self.leaderboard_button.rect = pygame.Rect(center_x - 130, center_y + 150, 260, 50)
 
     def set_winner(self, name: str):
         self.winner_name = name
@@ -374,10 +482,10 @@ class VictoryScreen:
 
     def update(self, mouse_pos: tuple):
         self.animation_timer += 1
-        self.play_again_button.update(mouse_pos)
+        self.leaderboard_button.update(mouse_pos)
 
-    def check_restart(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
-        return self.play_again_button.is_clicked(mouse_pos, mouse_clicked)
+    def check_leaderboard(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        return self.leaderboard_button.is_clicked(mouse_pos, mouse_clicked)
 
     def draw(self, screen: pygame.Surface):
         # Darken background
@@ -436,8 +544,103 @@ class VictoryScreen:
         subtitle_rect = subtitle.get_rect(center=(center_x, center_y + 80))
         screen.blit(subtitle, subtitle_rect)
 
-        # Play again button
+        # Leaderboard button
+        self.leaderboard_button.draw(screen)
+
+
+class LeaderboardScreen:
+    """Shows final rankings of all contestants."""
+    def __init__(self, fonts: dict):
+        self.fonts = fonts
+        self.window_width = WINDOW_WIDTH
+        self.window_height = WINDOW_HEIGHT
+        center_x = WINDOW_WIDTH // 2
+        self.play_again_button = Button(center_x - 180, 700, 160, 50, "PLAY AGAIN", fonts['medium'])
+        self.quit_button = Button(center_x + 20, 700, 160, 50, "QUIT", fonts['medium'], color=(150, 60, 60), hover_color=(200, 80, 80))
+        self.rankings = []  # List of names from winner to last eliminated
+        self.scroll_offset = 0
+
+    def update_layout(self, window_width: int, window_height: int):
+        self.window_width = window_width
+        self.window_height = window_height
+        center_x = window_width // 2
+        self.play_again_button.rect = pygame.Rect(center_x - 180, window_height - 80, 160, 50)
+        self.quit_button.rect = pygame.Rect(center_x + 20, window_height - 80, 160, 50)
+
+    def set_rankings(self, winner: str, eliminated: list):
+        """Set rankings from winner (1st) and elimination order (last eliminated = 2nd)."""
+        self.rankings = [winner] + list(reversed(eliminated))
+        self.scroll_offset = 0
+
+    def update(self, mouse_pos: tuple):
+        self.play_again_button.update(mouse_pos)
+        self.quit_button.update(mouse_pos)
+
+    def handle_scroll(self, event: pygame.event.Event):
+        if event.type == pygame.MOUSEWHEEL:
+            self.scroll_offset -= event.y * 3
+            max_scroll = max(0, len(self.rankings) - 15)
+            self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
+
+    def check_play_again(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        return self.play_again_button.is_clicked(mouse_pos, mouse_clicked)
+
+    def check_quit(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        return self.quit_button.is_clicked(mouse_pos, mouse_clicked)
+
+    def draw(self, screen: pygame.Surface):
+        screen.fill(UI_BG)
+
+        center_x = self.window_width // 2
+
+        # Title
+        title = self.fonts['title'].render("LEADERBOARD", True, VICTORY_GOLD)
+        title_rect = title.get_rect(center=(center_x, 50))
+        screen.blit(title, title_rect)
+
+        # Rankings
+        start_y = 110
+        line_height = 32
+        max_visible = min(18, (self.window_height - 200) // line_height)
+
+        for i, name in enumerate(self.rankings[self.scroll_offset:self.scroll_offset + max_visible]):
+            rank = i + self.scroll_offset + 1
+            y = start_y + i * line_height
+
+            # Medal colors for top 3
+            if rank == 1:
+                color = (255, 215, 0)  # Gold
+                prefix = "🥇"
+            elif rank == 2:
+                color = (192, 192, 192)  # Silver
+                prefix = "🥈"
+            elif rank == 3:
+                color = (205, 127, 50)  # Bronze
+                prefix = "🥉"
+            else:
+                color = UI_TEXT
+                prefix = f"{rank}."
+
+            display_name = name if len(name) <= 40 else name[:37] + "..."
+
+            # Rank
+            rank_text = self.fonts['medium'].render(f"{prefix}", True, color)
+            screen.blit(rank_text, (center_x - 280, y))
+
+            # Name
+            name_text = self.fonts['medium'].render(display_name, True, color)
+            screen.blit(name_text, (center_x - 220, y))
+
+        # Scroll indicator
+        if len(self.rankings) > max_visible:
+            scroll_text = f"Showing {self.scroll_offset + 1}-{min(self.scroll_offset + max_visible, len(self.rankings))} of {len(self.rankings)}"
+            scroll_surface = self.fonts['tiny'].render(scroll_text, True, UI_TEXT_DIM)
+            scroll_rect = scroll_surface.get_rect(center=(center_x, self.window_height - 120))
+            screen.blit(scroll_surface, scroll_rect)
+
+        # Buttons
         self.play_again_button.draw(screen)
+        self.quit_button.draw(screen)
 
 
 def create_fonts() -> dict:
