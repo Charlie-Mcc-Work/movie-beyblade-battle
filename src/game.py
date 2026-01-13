@@ -41,7 +41,7 @@ class Game:
         self.heat_winners: list[str] = []
         self.is_finals = False
         self.advancers_per_heat = 2  # Top N from each heat advance
-        self.max_per_heat = 8  # Max beyblades per heat
+        self.max_per_heat = 11  # Max beyblades per heat
 
         self.running = True
 
@@ -152,6 +152,10 @@ class Game:
             self.battle_hud.update(mouse_pos)
             self.speed_multiplier = self.battle_hud.check_speed_click(mouse_pos, mouse_clicked)
 
+            # Check mute toggle
+            if self.battle_hud.check_mute_click(mouse_pos, mouse_clicked):
+                self.effects.sound.muted = self.battle_hud.muted
+
             # Update physics multiple times for speed multiplier
             for _ in range(self.speed_multiplier):
                 self.update_battle()
@@ -173,9 +177,29 @@ class Game:
         for i, b1 in enumerate(alive_beyblades):
             for b2 in alive_beyblades[i+1:]:
                 if check_collision(b1, b2):
-                    collision_x, collision_y, intensity = resolve_collision(b1, b2)
+                    collision_x, collision_y, intensity, triggers = resolve_collision(b1, b2)
                     if intensity > 0.5:
                         self.effects.spawn_collision_sparks(collision_x, collision_y, intensity)
+                        # Play hit sound
+                        if intensity > 5:
+                            self.effects.sound.play('big_hit')
+                        else:
+                            self.effects.sound.play('hit')
+                    # Process ability triggers with appropriate sounds
+                    for name, text, color in triggers:
+                        sound = self._get_ability_sound(text)
+                        self.effects.spawn_ability_notification(name, text, color, sound)
+
+        # Check for turbo and bouncy triggers
+        for beyblade in self.beyblades:
+            if beyblade.turbo_triggered:
+                from .constants import ABILITIES
+                self.effects.spawn_ability_notification(beyblade.name, 'Turbo!', ABILITIES['turbo']['color'], 'turbo')
+                beyblade.turbo_triggered = False
+            if beyblade.bouncy_triggered:
+                from .constants import ABILITIES
+                self.effects.spawn_ability_notification(beyblade.name, 'Bouncy save!', ABILITIES['bouncy']['color'], 'bouncy')
+                beyblade.bouncy_triggered = False
 
         # Check for new eliminations
         for beyblade in self.beyblades:
@@ -184,6 +208,7 @@ class Game:
                 self.effects.spawn_knockout_effect(
                     beyblade.x, beyblade.y, beyblade.color, beyblade.name
                 )
+                self.effects.sound.play('knockout')
 
         # Update effects
         self.effects.update()
@@ -210,6 +235,27 @@ class Game:
             all_stopped = all(b.speed < 0.3 for b in alive_beyblades)
             if all_stopped:
                 self.start_new_round()
+
+    def _get_ability_sound(self, text: str) -> str:
+        """Get the appropriate sound name for an ability trigger."""
+        text_lower = text.lower()
+        if 'burst' in text_lower:
+            return 'burst'
+        elif 'dodge' in text_lower:
+            return 'dodge'
+        elif 'counter' in text_lower:
+            return 'counter'
+        elif 'vampire' in text_lower:
+            return 'vampire'
+        elif 'rage' in text_lower:
+            return 'burst'
+        elif 'gambler win' in text_lower:
+            return 'gambler_win'
+        elif 'gambler lose' in text_lower:
+            return 'gambler_lose'
+        elif 'mirror' in text_lower:
+            return 'ability'
+        return 'ability'
 
     def _end_current_heat(self, survivors: list):
         """Handle end of a heat - advance winners or end tournament."""

@@ -50,7 +50,18 @@ class Arena:
 
         # Ring-out: if center of beyblade exits arena, it's eliminated
         if dist_from_center > self.radius:
-            beyblade.die()
+            # Bouncy ability: survive one ring-out
+            if beyblade.ability == 'bouncy' and not beyblade.bouncy_used:
+                beyblade.bouncy_used = True
+                # Bounce back into arena
+                beyblade.x = self.center_x + nx * (self.radius * 0.7)
+                beyblade.y = self.center_y + ny * (self.radius * 0.7)
+                # Reverse velocity and boost back in
+                beyblade.vx = -nx * 5
+                beyblade.vy = -ny * 5
+                beyblade.bouncy_triggered = True  # For notification
+            else:
+                beyblade.die()
 
     def draw(self, screen: pygame.Surface):
         """Draw the arena with a stadium-like appearance."""

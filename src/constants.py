@@ -106,3 +106,87 @@ STATE_VICTORY = 'victory'
 
 # File loading
 MOVIE_LIST_FILE = "movies.txt"
+
+# Abilities
+ABILITY_CHANCE = 0.30  # 30% chance to have an ability
+
+ABILITIES = {
+    'glass_cannon': {
+        'name': 'Glass Cannon',
+        'color': (255, 100, 100),
+        'type': 'passive',
+        'description': '+50% knockback dealt & received',
+    },
+    'vampire': {
+        'name': 'Vampire',
+        'color': (150, 0, 50),
+        'type': 'passive',
+        'description': 'Steal stamina on hit',
+    },
+    'giant': {
+        'name': 'Giant',
+        'color': (200, 150, 100),
+        'type': 'passive',
+        'description': '40% larger size',
+    },
+    'tiny': {
+        'name': 'Tiny',
+        'color': (150, 200, 255),
+        'type': 'passive',
+        'description': '30% smaller size',
+    },
+    'burst': {
+        'name': 'Burst',
+        'color': (255, 200, 0),
+        'type': 'triggered',
+        'description': 'Chance for 2.5x knockback',
+        'trigger_chance': 0.15,
+    },
+    'dodge': {
+        'name': 'Dodge',
+        'color': (100, 255, 200),
+        'type': 'triggered',
+        'description': 'Chance to ignore knockback',
+        'trigger_chance': 0.20,
+    },
+    'bouncy': {
+        'name': 'Bouncy',
+        'color': (255, 150, 255),
+        'type': 'triggered',
+        'description': 'Survive one ring-out',
+        'uses': 1,
+    },
+    'counter': {
+        'name': 'Counter',
+        'color': (255, 50, 150),
+        'type': 'triggered',
+        'description': 'Chance to reflect knockback',
+        'trigger_chance': 0.15,
+    },
+    'rage': {
+        'name': 'Rage',
+        'color': (255, 50, 0),
+        'type': 'triggered',
+        'description': 'Next hit 2x after taking big hit',
+    },
+    'turbo': {
+        'name': 'Turbo',
+        'color': (0, 200, 255),
+        'type': 'triggered',
+        'description': 'Random speed boost',
+        'trigger_chance': 0.02,
+    },
+    'gambler': {
+        'name': 'Gambler',
+        'color': (255, 215, 0),
+        'type': 'passive',
+        'description': 'Hits randomly 2x or 0.5x',
+    },
+    'mirror': {
+        'name': 'Mirror',
+        'color': (200, 200, 255),
+        'type': 'triggered',
+        'description': 'Copy ability on hit',
+        'trigger_chance': 0.25,
+    },
+}

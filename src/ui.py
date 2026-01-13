@@ -217,19 +217,29 @@ class BattleHUD:
         self.fonts = fonts
         self.speed_buttons = []
         self.current_speed = 1
+        self.muted = False
 
-        # Speed control buttons
+        # Speed control buttons (shifted left to make room for mute)
         for i, speed in enumerate(SPEED_OPTIONS):
             btn = Button(
-                WINDOW_WIDTH - 180 + i * 55, 10, 50, 30,
+                WINDOW_WIDTH - 240 + i * 55, 10, 50, 30,
                 f"{speed}x", fonts['small']
             )
             self.speed_buttons.append((speed, btn))
+
+        # Mute button (top right corner, after speed buttons)
+        self.mute_button = Button(
+            WINDOW_WIDTH - 65, 10, 55, 30,
+            "MUTE", fonts['tiny'], color=(80, 80, 100)
+        )
 
     def update(self, mouse_pos: tuple):
         for speed, btn in self.speed_buttons:
             btn.update(mouse_pos)
             btn.color = UI_ACCENT if speed == self.current_speed else UI_PANEL
+        self.mute_button.update(mouse_pos)
+        self.mute_button.text = "UNMUTE" if self.muted else "MUTE"
+        self.mute_button.color = (255, 100, 100) if self.muted else (80, 80, 100)
 
     def check_speed_click(self, mouse_pos: tuple, mouse_clicked: bool) -> int:
         if mouse_clicked:
@@ -238,6 +248,13 @@ class BattleHUD:
                     self.current_speed = speed
                     return speed
         return self.current_speed
+
+    def check_mute_click(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        """Check if mute button was clicked. Returns True if mute state toggled."""
+        if mouse_clicked and self.mute_button.is_clicked(mouse_pos, True):
+            self.muted = not self.muted
+            return True
+        return False
 
     def draw(self, screen: pygame.Surface, alive_count: int, total_count: int, eliminated: list, round_number: int = 1, heat_info: tuple = None):
         # Top bar background
@@ -266,11 +283,14 @@ class BattleHUD:
 
         # Speed label
         speed_label = self.fonts['small'].render("Speed:", True, UI_TEXT_DIM)
-        screen.blit(speed_label, (WINDOW_WIDTH - 250, 15))
+        screen.blit(speed_label, (WINDOW_WIDTH - 310, 15))
 
         # Speed buttons
         for _, btn in self.speed_buttons:
             btn.draw(screen)
+
+        # Mute button
+        self.mute_button.draw(screen)
 
         # Eliminated list (right side panel)
         if eliminated:
