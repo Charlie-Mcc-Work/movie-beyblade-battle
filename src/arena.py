@@ -10,7 +10,18 @@ from .beyblade import Beyblade
 class Arena:
     def __init__(self):
         self.center_x, self.center_y = ARENA_CENTER
+        self.base_radius = ARENA_RADIUS
         self.radius = ARENA_RADIUS
+
+    def update_center(self, window_width: int, window_height: int) -> tuple:
+        """Update arena center and radius based on window size. Returns (dx, dy) offset."""
+        old_center_x, old_center_y = self.center_x, self.center_y
+        self.center_x = window_width // 2
+        self.center_y = window_height // 2
+        # Scale radius to fit window (use smaller dimension, leave margin)
+        max_radius = min(window_width, window_height) // 2 - 50
+        self.radius = min(self.base_radius, max_radius)
+        return (self.center_x - old_center_x, self.center_y - old_center_y)
 
     def apply_boundary(self, beyblade: Beyblade):
         """Apply arena boundary physics - bowl shape with centripetal force for orbiting."""

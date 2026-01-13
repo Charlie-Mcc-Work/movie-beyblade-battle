@@ -145,7 +145,7 @@ class EffectsManager:
         self.particles: list[Particle] = []
         self.knockout_effects: list[dict] = []
         self.event_log: list[dict] = []  # Scrolling log on the side
-        self.max_log_entries = 15
+        self.max_log_entries = 30  # Entries persist until heat ends
         self.sound = SoundManager()
 
     def spawn_collision_sparks(self, x: float, y: float, intensity: float = 1.0):
@@ -278,22 +278,15 @@ class EffectsManager:
         for i, entry in enumerate(self.event_log):
             y = log_y_start + i * line_height
 
-            # Fade in new entries
-            fade_in = min(1.0, entry['age'] / 15)
-            # Slight fade for older entries
-            fade_out = max(0.4, 1.0 - (entry['age'] / 300))
-            alpha = fade_in * fade_out
+            # Fade in new entries, then stay solid (cleared when heat ends)
+            alpha = min(1.0, entry['age'] / 15)
 
-            # Background
+            # Build text - only truncate names over 25 chars
             if entry['name']:
-                name_short = entry['name'][:10] + '..' if len(entry['name']) > 10 else entry['name']
-                text = f"{name_short}: {entry['text']}"
+                name_display = entry['name'][:22] + '...' if len(entry['name']) > 25 else entry['name']
+                text = f"{name_display}: {entry['text']}"
             else:
                 text = entry['text']
-
-            # Truncate if too long
-            if len(text) > 28:
-                text = text[:25] + "..."
 
             text_color = tuple(int(c * alpha) for c in entry['color'])
             text_surface = font.render(text, True, text_color)

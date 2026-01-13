@@ -131,6 +131,8 @@ class TextBox:
 class InputScreen:
     def __init__(self, fonts: dict):
         self.fonts = fonts
+        self.window_width = WINDOW_WIDTH
+        self.window_height = WINDOW_HEIGHT
         center_x = WINDOW_WIDTH // 2
 
         self.text_box = TextBox(center_x - 300, 150, 600, 450, fonts['small'])
@@ -140,6 +142,21 @@ class InputScreen:
 
         self.error_message = ""
         self.error_timer = 0
+
+    def update_layout(self, window_width: int, window_height: int):
+        """Update positions based on new window size."""
+        self.window_width = window_width
+        self.window_height = window_height
+        center_x = window_width // 2
+
+        # Recalculate text box size based on window
+        box_width = min(600, window_width - 100)
+        box_height = min(450, window_height - 250)
+        self.text_box.rect = pygame.Rect(center_x - box_width // 2, 150, box_width, box_height)
+
+        # Reposition button
+        button_y = min(630, window_height - 170)
+        self.battle_button.rect = pygame.Rect(center_x - 100, button_y, 200, 50)
 
     def handle_event(self, event: pygame.event.Event):
         self.text_box.handle_event(event)
@@ -170,15 +187,16 @@ class InputScreen:
 
     def draw(self, screen: pygame.Surface):
         screen.fill(UI_BG)
+        center_x = self.window_width // 2
 
         # Title
         title = self.fonts['title'].render("MOVIE BEYBLADE BATTLE", True, UI_ACCENT)
-        title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, 60))
+        title_rect = title.get_rect(center=(center_x, 60))
         screen.blit(title, title_rect)
 
         # Subtitle
         subtitle = self.fonts['small'].render("Enter movie titles (one per line) and let them fight!", True, UI_TEXT_DIM)
-        subtitle_rect = subtitle.get_rect(center=(WINDOW_WIDTH // 2, 110))
+        subtitle_rect = subtitle.get_rect(center=(center_x, 110))
         screen.blit(subtitle, subtitle_rect)
 
         # Text box
@@ -188,7 +206,7 @@ class InputScreen:
         entries = self.text_box.get_entries()
         count_text = f"{len(entries)} movies entered"
         count_surface = self.fonts['small'].render(count_text, True, UI_TEXT_DIM)
-        screen.blit(count_surface, (WINDOW_WIDTH // 2 - 300, 610))
+        screen.blit(count_surface, (self.text_box.rect.left, self.text_box.rect.bottom + 10))
 
         # Battle button
         self.battle_button.draw(screen)
@@ -196,7 +214,7 @@ class InputScreen:
         # Error message
         if self.error_timer > 0 and self.error_message:
             error_surface = self.fonts['medium'].render(self.error_message, True, (255, 100, 100))
-            error_rect = error_surface.get_rect(center=(WINDOW_WIDTH // 2, 700))
+            error_rect = error_surface.get_rect(center=(center_x, self.battle_button.rect.bottom + 30))
             screen.blit(error_surface, error_rect)
 
         # Instructions
@@ -204,10 +222,10 @@ class InputScreen:
             "Tip: Paste your movie list with Ctrl+V",
             "Each movie becomes a beyblade with random stats"
         ]
-        y = 720
+        y = self.window_height - 60
         for inst in instructions:
             text = self.fonts['tiny'].render(inst, True, UI_TEXT_DIM)
-            rect = text.get_rect(center=(WINDOW_WIDTH // 2, y))
+            rect = text.get_rect(center=(center_x, y))
             screen.blit(text, rect)
             y += 20
 
@@ -218,6 +236,8 @@ class BattleHUD:
         self.speed_buttons = []
         self.current_speed = 1
         self.muted = False
+        self.window_width = WINDOW_WIDTH
+        self.window_height = WINDOW_HEIGHT
 
         # Speed control buttons (shifted left to make room for mute)
         for i, speed in enumerate(SPEED_OPTIONS):
@@ -232,6 +252,18 @@ class BattleHUD:
             WINDOW_WIDTH - 65, 10, 55, 30,
             "MUTE", fonts['tiny'], color=(80, 80, 100)
         )
+
+    def update_layout(self, window_width: int, window_height: int):
+        """Update positions based on new window size."""
+        self.window_width = window_width
+        self.window_height = window_height
+
+        # Reposition speed buttons
+        for i, (speed, btn) in enumerate(self.speed_buttons):
+            btn.rect.x = window_width - 240 + i * 55
+
+        # Reposition mute button
+        self.mute_button.rect.x = window_width - 65
 
     def update(self, mouse_pos: tuple):
         for speed, btn in self.speed_buttons:
@@ -258,7 +290,7 @@ class BattleHUD:
 
     def draw(self, screen: pygame.Surface, alive_count: int, total_count: int, eliminated: list, round_number: int = 1, heat_info: tuple = None):
         # Top bar background
-        pygame.draw.rect(screen, (0, 0, 0, 180), (0, 0, WINDOW_WIDTH, 50))
+        pygame.draw.rect(screen, (0, 0, 0, 180), (0, 0, self.window_width, 50))
 
         x_offset = 20
 
@@ -283,7 +315,7 @@ class BattleHUD:
 
         # Speed label
         speed_label = self.fonts['small'].render("Speed:", True, UI_TEXT_DIM)
-        screen.blit(speed_label, (WINDOW_WIDTH - 310, 15))
+        screen.blit(speed_label, (self.window_width - 310, 15))
 
         # Speed buttons
         for _, btn in self.speed_buttons:
@@ -295,7 +327,7 @@ class BattleHUD:
         # Eliminated list (right side panel)
         if eliminated:
             panel_width = 200
-            panel_x = WINDOW_WIDTH - panel_width - 10
+            panel_x = self.window_width - panel_width - 10
             panel_y = 60
             panel_height = min(400, len(eliminated) * 25 + 40)
 
@@ -321,10 +353,20 @@ class BattleHUD:
 class VictoryScreen:
     def __init__(self, fonts: dict):
         self.fonts = fonts
+        self.window_width = WINDOW_WIDTH
+        self.window_height = WINDOW_HEIGHT
         center_x = WINDOW_WIDTH // 2
         self.play_again_button = Button(center_x - 110, 550, 220, 50, "PLAY AGAIN", fonts['medium'])
         self.winner_name = ""
         self.animation_timer = 0
+
+    def update_layout(self, window_width: int, window_height: int):
+        """Update positions based on new window size."""
+        self.window_width = window_width
+        self.window_height = window_height
+        center_x = window_width // 2
+        center_y = window_height // 2
+        self.play_again_button.rect = pygame.Rect(center_x - 110, center_y + 150, 220, 50)
 
     def set_winner(self, name: str):
         self.winner_name = name
@@ -339,12 +381,12 @@ class VictoryScreen:
 
     def draw(self, screen: pygame.Surface):
         # Darken background
-        overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+        overlay = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 200))
         screen.blit(overlay, (0, 0))
 
-        center_x = WINDOW_WIDTH // 2
-        center_y = WINDOW_HEIGHT // 2
+        center_x = self.window_width // 2
+        center_y = self.window_height // 2
 
         # Pulsing glow effect
         pulse = abs((self.animation_timer % 60) - 30) / 30
@@ -373,12 +415,12 @@ class VictoryScreen:
         title_rect = title_surface.get_rect(center=(center_x, center_y))
 
         # If title is too wide, use smaller font
-        if title_rect.width > WINDOW_WIDTH - 100:
+        if title_rect.width > self.window_width - 100:
             title_surface = self.fonts['title'].render(self.winner_name, True, WHITE)
             title_rect = title_surface.get_rect(center=(center_x, center_y))
 
         # Still too wide? Truncate
-        if title_rect.width > WINDOW_WIDTH - 100:
+        if title_rect.width > self.window_width - 100:
             truncated = self.winner_name[:30] + "..."
             title_surface = self.fonts['title'].render(truncated, True, WHITE)
             title_rect = title_surface.get_rect(center=(center_x, center_y))

@@ -15,8 +15,14 @@ class Game:
         pygame.init()
         pygame.scrap.init()
 
-        self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+        # Make window resizable
+        self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
         pygame.display.set_caption("Movie Beyblade Battle")
+
+        # Get actual window size (may differ from requested due to WM)
+        actual_size = self.screen.get_size()
+        self.window_width = actual_size[0]
+        self.window_height = actual_size[1]
 
         self.clock = pygame.time.Clock()
         self.fonts = create_fonts()
@@ -27,6 +33,13 @@ class Game:
         self.input_screen = InputScreen(self.fonts)
         self.battle_hud = BattleHUD(self.fonts)
         self.victory_screen = VictoryScreen(self.fonts)
+
+        # Update all layouts for actual window size (in case WM resized us)
+        if self.window_width != WINDOW_WIDTH or self.window_height != WINDOW_HEIGHT:
+            self.arena.update_center(self.window_width, self.window_height)
+            self.input_screen.update_layout(self.window_width, self.window_height)
+            self.battle_hud.update_layout(self.window_width, self.window_height)
+            self.victory_screen.update_layout(self.window_width, self.window_height)
 
         self.beyblades: list[Beyblade] = []
         self.eliminated: list[str] = []
@@ -130,6 +143,21 @@ class Game:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+
+            if event.type == pygame.VIDEORESIZE:
+                self.window_width = event.w
+                self.window_height = event.h
+                self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
+                # Update arena center and get offset
+                dx, dy = self.arena.update_center(event.w, event.h)
+                # Move all beyblades by the offset to keep them centered
+                for beyblade in self.beyblades:
+                    beyblade.x += dx
+                    beyblade.y += dy
+                # Update UI components
+                self.input_screen.update_layout(event.w, event.h)
+                self.battle_hud.update_layout(event.w, event.h)
+                self.victory_screen.update_layout(event.w, event.h)
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_clicked = True
