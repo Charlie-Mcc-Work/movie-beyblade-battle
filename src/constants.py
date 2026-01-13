@@ -6,7 +6,6 @@ FPS = 60
 # Arena settings
 ARENA_CENTER = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
 ARENA_RADIUS = 350
-ARENA_SLOPE_STRENGTH = 0.15  # How strongly the slope pushes toward center
 
 # Beyblade settings
 BEYBLADE_RADIUS = 25
@@ -23,11 +22,12 @@ STAT_RANGES = {
 }
 
 # Physics
-MAX_SPEED = 8
-FRICTION = 0.98
+MAX_SPEED = 10
+FRICTION = 0.99
 COLLISION_ELASTICITY = 0.8
 BASE_DAMAGE_MULTIPLIER = 0.5
 KNOCKBACK_FORCE = 2.0
+ARENA_SLOPE_STRENGTH = 0.15  # Bowl slope - creates orbital motion
 
 # Colors
 BLACK = (0, 0, 0)
@@ -103,3 +103,6 @@ FONT_SIZES = {
 STATE_INPUT = 'input'
 STATE_BATTLE = 'battle'
 STATE_VICTORY = 'victory'
+
+# File loading
+MOVIE_LIST_FILE = "movies.txt"

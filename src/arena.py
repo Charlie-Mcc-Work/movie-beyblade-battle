@@ -13,7 +13,7 @@ class Arena:
         self.radius = ARENA_RADIUS
 
     def apply_boundary(self, beyblade: Beyblade):
-        """Apply arena boundary physics - slope toward center and bounce off edge."""
+        """Apply arena boundary physics - bowl shape with centripetal force for orbiting."""
         dx = beyblade.x - self.center_x
         dy = beyblade.y - self.center_y
         dist_from_center = math.sqrt(dx**2 + dy**2)
@@ -25,25 +25,32 @@ class Arena:
         nx = dx / dist_from_center
         ny = dy / dist_from_center
 
-        # Apply slope force pushing toward center (stronger near edges)
+        # Bowl physics: slope force toward center (like gravity in a bowl)
+        # Stronger near edges, simulating steeper bowl walls
         edge_proximity = dist_from_center / self.radius
-        slope_force = ARENA_SLOPE_STRENGTH * edge_proximity ** 2
+        slope_force = ARENA_SLOPE_STRENGTH * (edge_proximity ** 1.5)
 
+        # Apply centripetal force (toward center)
         beyblade.vx -= nx * slope_force
         beyblade.vy -= ny * slope_force
 
-        # Hard boundary at edge
-        max_dist = self.radius - beyblade.radius
-        if dist_from_center > max_dist:
-            # Push back inside
-            beyblade.x = self.center_x + nx * max_dist
-            beyblade.y = self.center_y + ny * max_dist
+        # Add slight tangential force to maintain circular motion
+        # This simulates how spinning beyblades convert some energy into orbital motion
+        if beyblade.speed > 0.5:
+            # Tangent is perpendicular to radius
+            tx = -ny
+            ty = nx
+            # Determine spin direction from current velocity
+            cross = beyblade.vx * ty - beyblade.vy * tx
+            spin_dir = 1 if cross > 0 else -1
+            # Small tangential boost based on distance from center
+            tangent_force = 0.02 * edge_proximity * spin_dir
+            beyblade.vx += tx * tangent_force
+            beyblade.vy += ty * tangent_force
 
-            # Bounce velocity (reflect off wall)
-            dot = beyblade.vx * nx + beyblade.vy * ny
-            if dot > 0:  # Moving toward wall
-                beyblade.vx -= 1.5 * dot * nx
-                beyblade.vy -= 1.5 * dot * ny
+        # Ring-out: if center of beyblade exits arena, it's eliminated
+        if dist_from_center > self.radius:
+            beyblade.die()
 
     def draw(self, screen: pygame.Surface):
         """Draw the arena with a stadium-like appearance."""
@@ -82,14 +89,22 @@ class Arena:
         pygame.draw.arc(screen, WHITE, highlight_rect, math.radians(200), math.radians(340), 3)
 
     def get_spawn_positions(self, count: int) -> list:
-        """Generate spawn positions evenly distributed around the arena."""
-        positions = []
-        spawn_radius = self.radius * 0.7  # Spawn in inner 70% of arena
+        """Generate spawn positions evenly distributed around the arena with tangential velocities."""
+        spawns = []
+        spawn_radius = self.radius * 0.6  # Spawn in inner 60% of arena
 
         for i in range(count):
             angle = (2 * math.pi * i / count) + (math.pi / 4)  # Offset for variety
-            x = self.center_x + math.cos(angle) * spawn_radius * (0.5 + 0.5 * ((i % 3) / 2))
-            y = self.center_y + math.sin(angle) * spawn_radius * (0.5 + 0.5 * ((i % 3) / 2))
-            positions.append((x, y))
+            dist = spawn_radius * (0.5 + 0.5 * ((i % 3) / 2))
+            x = self.center_x + math.cos(angle) * dist
+            y = self.center_y + math.sin(angle) * dist
 
-        return positions
+            # Tangential velocity (perpendicular to radius, like spinning in)
+            # All spin same direction for realistic orbiting, with speed variation
+            speed = 5 + (i % 4) * 1.5  # Vary initial speeds (5-9.5)
+            vx = -math.sin(angle) * speed
+            vy = math.cos(angle) * speed
+
+            spawns.append((x, y, vx, vy))
+
+        return spawns

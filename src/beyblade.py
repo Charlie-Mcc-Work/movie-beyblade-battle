@@ -13,8 +13,9 @@ class Beyblade:
         self.name = name
         self.x = x
         self.y = y
-        self.vx = random.uniform(-2, 2)
-        self.vy = random.uniform(-2, 2)
+        # Will be set by arena spawn with tangential velocity
+        self.vx = 0
+        self.vy = 0
 
         # Generate random stats
         self.spin_power = random.uniform(*STAT_RANGES['spin_power'])
@@ -50,9 +51,12 @@ class Beyblade:
         self.x += self.vx * dt
         self.y += self.vy * dt
 
-        # Apply friction
-        self.vx *= FRICTION
-        self.vy *= FRICTION
+        # Apply friction - beyblades naturally slow down over time
+        # Friction increases as spin_power (stamina) decreases
+        spin_ratio = self.stamina / self.max_stamina
+        effective_friction = FRICTION - (1 - spin_ratio) * 0.01  # More friction as they tire
+        self.vx *= effective_friction
+        self.vy *= effective_friction
 
         # Clamp speed
         if self.speed > MAX_SPEED:
@@ -65,8 +69,8 @@ class Beyblade:
         if self.rotation > 360:
             self.rotation -= 360
 
-        # Stamina decay over time (very slow)
-        self.stamina -= 0.02 * dt
+        # Very slow stamina decay (backup elimination if no ring-outs)
+        self.stamina -= 0.005 * dt
         if self.stamina <= 0:
             self.die()
 
@@ -210,20 +214,19 @@ def resolve_collision(b1: Beyblade, b2: Beyblade) -> tuple:
     w1 = b2.weight / total_weight
     w2 = b1.weight / total_weight
 
-    # Impulse
-    impulse = relative_speed * 0.8
+    # Strong impulse for satisfying knockback
+    base_impulse = 6.0  # Moderate-strong knockback
+    speed_impulse = relative_speed * 1.8
+    # Attack stat adds extra knockback power
+    attack_bonus = (b1.attack + b2.attack) * 0.12
+    impulse = base_impulse + speed_impulse + attack_bonus
 
     b1.vx -= nx * impulse * w1
     b1.vy -= ny * impulse * w1
     b2.vx += nx * impulse * w2
     b2.vy += ny * impulse * w2
 
-    # Deal damage to each other
-    damage1 = b1.get_collision_damage(relative_speed)
-    damage2 = b2.get_collision_damage(relative_speed)
-
-    b1.take_damage(damage2)
-    b2.take_damage(damage1)
+    # No damage from collisions - ring-out only!
 
     # Return collision point for effects
     collision_x = b1.x + nx * b1.radius

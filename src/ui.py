@@ -1,8 +1,10 @@
 import pygame
+import os
 from .constants import (
     WINDOW_WIDTH, WINDOW_HEIGHT, FONT_SIZES,
     UI_BG, UI_PANEL, UI_ACCENT, UI_ACCENT_HOVER, UI_TEXT, UI_TEXT_DIM,
-    VICTORY_GOLD, VICTORY_GLOW, WHITE, BLACK, SPEED_OPTIONS
+    VICTORY_GOLD, VICTORY_GLOW, WHITE, BLACK, SPEED_OPTIONS,
+    MOVIE_LIST_FILE
 )
 
 
@@ -116,6 +118,15 @@ class TextBox:
         entries = [line.strip() for line in lines if line.strip()]
         return entries
 
+    def load_from_file(self, filepath: str) -> bool:
+        """Load text from file. Returns True if successful."""
+        try:
+            with open(filepath, 'r') as f:
+                self.text = f.read()
+            return True
+        except FileNotFoundError:
+            return False
+
 
 class InputScreen:
     def __init__(self, fonts: dict):
@@ -123,6 +134,8 @@ class InputScreen:
         center_x = WINDOW_WIDTH // 2
 
         self.text_box = TextBox(center_x - 300, 150, 600, 450, fonts['small'])
+        if os.path.exists(MOVIE_LIST_FILE):
+            self.text_box.load_from_file(MOVIE_LIST_FILE)
         self.battle_button = Button(center_x - 100, 630, 200, 50, "BATTLE!", fonts['medium'])
 
         self.error_message = ""
@@ -226,14 +239,30 @@ class BattleHUD:
                     return speed
         return self.current_speed
 
-    def draw(self, screen: pygame.Surface, alive_count: int, total_count: int, eliminated: list):
+    def draw(self, screen: pygame.Surface, alive_count: int, total_count: int, eliminated: list, round_number: int = 1, heat_info: tuple = None):
         # Top bar background
         pygame.draw.rect(screen, (0, 0, 0, 180), (0, 0, WINDOW_WIDTH, 50))
+
+        x_offset = 20
+
+        # Heat info (if tournament mode)
+        if heat_info:
+            heat_text, _ = heat_info
+            heat_color = (255, 100, 100) if heat_text == "FINALS" else (100, 200, 255)
+            heat_surface = self.fonts['medium'].render(heat_text, True, heat_color)
+            screen.blit(heat_surface, (x_offset, 12))
+            x_offset += heat_surface.get_width() + 20
+
+        # Round number
+        round_text = f"Round {round_number}"
+        round_surface = self.fonts['medium'].render(round_text, True, VICTORY_GOLD)
+        screen.blit(round_surface, (x_offset, 12))
+        x_offset += round_surface.get_width() + 20
 
         # Remaining count
         remaining_text = f"Remaining: {alive_count} / {total_count}"
         text_surface = self.fonts['medium'].render(remaining_text, True, WHITE)
-        screen.blit(text_surface, (20, 12))
+        screen.blit(text_surface, (x_offset, 12))
 
         # Speed label
         speed_label = self.fonts['small'].render("Speed:", True, UI_TEXT_DIM)
