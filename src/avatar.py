@@ -2,7 +2,7 @@ import pygame
 import random
 import math
 from enum import Enum, auto
-from .constants import AVATAR_DISTANCE_FROM_ARENA, AVATAR_ELIMINATED_DIM
+from .constants import AVATAR_DISTANCE_FROM_ARENA, AVATAR_ELIMINATED_DIM, AVATAR_ABILITIES
 
 
 class AvatarState(Enum):
@@ -71,15 +71,62 @@ class Avatar:
         self.victory_intensity = 0.0
         self.elim_transition = 0.0
 
-    def update_position(self, arena_cx: int, arena_cy: int, arena_radius: int):
-        """Calculate position around arena perimeter."""
-        angle = (2 * math.pi * self.index / self.total_count) - (math.pi / 2)
-        distance = arena_radius + AVATAR_DISTANCE_FROM_ARENA
+        # Fireball ability state
+        self.fireball_cooldown = 0
 
-        self.x = arena_cx + math.cos(angle) * distance
-        self.base_y = arena_cy + math.sin(angle) * distance
+        # Ice ability state
+        self.ice_cooldown = 0
+
+        # Grenade ability state
+        self.grenade_cooldown = 0
+
+        # Kamehameha ability state
+        self.kamehameha_cooldown = random.randint(600, 900)  # 10-15 seconds initial
+        self.kamehameha_charging = False
+        self.kamehameha_charge_timer = 0
+        self.kamehameha_angle = 0
+
+        # Water ability state
+        self.water_cooldown = random.randint(600, 900)  # 10-15 seconds initial
+
+        # John Wick pistol ability state
+        self.pistol_cooldown = 0
+
+    def update_position(self, arena_cx: int, arena_cy: int, arena_radius: int,
+                        finals_mode: bool = False, rect_left: int = 0, rect_right: int = 0,
+                        rect_top: int = 0, rect_bottom: int = 0):
+        """Calculate position around arena perimeter."""
+        if finals_mode:
+            # Rectangle mode: distribute on left and right edges
+            half = self.total_count // 2
+            margin = 40  # Space from top/bottom edges
+
+            if self.index < half:
+                # Left side - face right
+                self.x = rect_left - AVATAR_DISTANCE_FROM_ARENA
+                usable_height = (rect_bottom - rect_top) - margin * 2
+                spacing = usable_height / max(1, half - 1) if half > 1 else 0
+                self.base_y = rect_top + margin + self.index * spacing
+                self.angle = 0  # Face right
+            else:
+                # Right side - face left
+                self.x = rect_right + AVATAR_DISTANCE_FROM_ARENA
+                idx = self.index - half
+                remaining = self.total_count - half
+                usable_height = (rect_bottom - rect_top) - margin * 2
+                spacing = usable_height / max(1, remaining - 1) if remaining > 1 else 0
+                self.base_y = rect_top + margin + idx * spacing
+                self.angle = math.pi  # Face left
+        else:
+            # Circle mode: distribute around perimeter
+            angle = (2 * math.pi * self.index / self.total_count) - (math.pi / 2)
+            distance = arena_radius + AVATAR_DISTANCE_FROM_ARENA
+
+            self.x = arena_cx + math.cos(angle) * distance
+            self.base_y = arena_cy + math.sin(angle) * distance
+            self.angle = angle + math.pi  # Face toward center
+
         self.y = self.base_y
-        self.angle = angle + math.pi  # Face toward center
 
     def set_state(self, new_state: AvatarState):
         """Change animation state."""
@@ -165,6 +212,9 @@ class Avatar:
 
         # Draw accessory
         self._draw_accessory(screen, head_x, head_y, head_r, color)
+
+        # Draw name below avatar
+        self._draw_name(screen, hip_x, hip_y + leg_len + 5, color)
 
     def _get_pose(self) -> tuple:
         """Get pose based on current animation state."""
@@ -341,6 +391,21 @@ class Avatar:
         pygame.draw.line(screen, color, (hx, hy), left_end, thickness)
         pygame.draw.line(screen, color, (hx, hy), right_end, thickness)
 
+    def _draw_name(self, screen: pygame.Surface, x: int, y: int, color: tuple):
+        """Draw the movie name below the avatar."""
+        font = pygame.font.Font(None, 24)
+        # Truncate long names
+        display_name = self.beyblade_name if len(self.beyblade_name) <= 15 else self.beyblade_name[:12] + "..."
+        text_surface = font.render(display_name, True, color)
+        text_rect = text_surface.get_rect(center=(x, y))
+
+        # Background for readability
+        bg_rect = text_rect.inflate(6, 2)
+        bg_surface = pygame.Surface(bg_rect.size, pygame.SRCALPHA)
+        bg_surface.fill((0, 0, 0, 120))
+        screen.blit(bg_surface, bg_rect)
+        screen.blit(text_surface, text_rect)
+
 
 class AvatarManager:
     """Manages all avatars for a battle."""
@@ -359,14 +424,24 @@ class AvatarManager:
                 index=i,
                 total_count=len(beyblades)
             )
-            avatar.update_position(arena.center_x, arena.center_y, arena.radius)
+            avatar.update_position(
+                arena.center_x, arena.center_y, arena.radius,
+                finals_mode=arena.finals_mode,
+                rect_left=arena.rect_left, rect_right=arena.rect_right,
+                rect_top=arena.rect_top, rect_bottom=arena.rect_bottom
+            )
             avatar.set_state(AvatarState.LAUNCHING)
             self.avatars[beyblade.name] = avatar
 
     def update_positions(self, arena):
         """Update all avatar positions (for window resize)."""
         for avatar in self.avatars.values():
-            avatar.update_position(arena.center_x, arena.center_y, arena.radius)
+            avatar.update_position(
+                arena.center_x, arena.center_y, arena.radius,
+                finals_mode=arena.finals_mode,
+                rect_left=arena.rect_left, rect_right=arena.rect_right,
+                rect_top=arena.rect_top, rect_bottom=arena.rect_bottom
+            )
 
     def sync_with_beyblades(self, beyblades: list, winner_name: str = None):
         """Update avatar states based on beyblade status."""
@@ -377,7 +452,12 @@ class AvatarManager:
                 if winner_name and beyblade.name == winner_name:
                     avatar.set_state(AvatarState.VICTORY)
                 elif not beyblade.alive:
-                    avatar.set_state(AvatarState.ELIMINATED)
+                    # Avatar abilities keep the avatar active (cheering) even when dead
+                    if beyblade.ability in AVATAR_ABILITIES:
+                        if avatar.state not in (AvatarState.LAUNCHING,):
+                            avatar.set_state(AvatarState.CHEERING)
+                    else:
+                        avatar.set_state(AvatarState.ELIMINATED)
                 elif avatar.state not in (AvatarState.LAUNCHING,):
                     avatar.set_state(AvatarState.CHEERING)
 

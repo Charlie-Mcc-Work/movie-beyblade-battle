@@ -4,7 +4,7 @@ from .constants import (
     WINDOW_WIDTH, WINDOW_HEIGHT, FONT_SIZES,
     UI_BG, UI_PANEL, UI_ACCENT, UI_ACCENT_HOVER, UI_TEXT, UI_TEXT_DIM,
     VICTORY_GOLD, VICTORY_GLOW, WHITE, BLACK, SPEED_OPTIONS,
-    MOVIE_LIST_FILE
+    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE
 )
 
 
@@ -143,6 +143,11 @@ class InputScreen:
         self.error_message = ""
         self.error_timer = 0
 
+        # Queue display
+        self.queue_items = []
+        self.queue_rects = []  # Clickable areas for queue items
+        self.load_queue()
+
     def update_layout(self, window_width: int, window_height: int):
         """Update positions based on new window size."""
         self.window_width = window_width
@@ -184,6 +189,34 @@ class InputScreen:
                 self.error_message = "Need at least 2 movies!"
                 self.error_timer = 120
         return (False, [])
+
+    def load_queue(self):
+        """Load queue items from queue.txt."""
+        self.queue_items = []
+        if os.path.exists(QUEUE_FILE):
+            try:
+                with open(QUEUE_FILE, 'r') as f:
+                    lines = f.read().strip().split('\n')
+                    self.queue_items = [line.strip() for line in lines if line.strip()]
+            except:
+                pass
+
+    def check_queue_click(self, mouse_pos: tuple, mouse_clicked: bool) -> str:
+        """Check if a queue item was clicked. Returns the item name if clicked, None otherwise."""
+        if not mouse_clicked:
+            return None
+        for i, rect in enumerate(self.queue_rects):
+            if rect.collidepoint(mouse_pos) and i < len(self.queue_items):
+                return self.queue_items[i]
+        return None
+
+    def remove_from_queue(self, movie_name: str):
+        """Remove a movie from the queue and update the file."""
+        if movie_name in self.queue_items:
+            self.queue_items.remove(movie_name)
+            # Write updated queue to file
+            with open(QUEUE_FILE, 'w') as f:
+                f.write('\n'.join(self.queue_items))
 
     def draw(self, screen: pygame.Surface):
         screen.fill(UI_BG)
@@ -228,6 +261,55 @@ class InputScreen:
             rect = text.get_rect(center=(center_x, y))
             screen.blit(text, rect)
             y += 20
+
+        # Queue panel on the right side
+        if self.queue_items:
+            panel_width = 250
+            panel_x = self.window_width - panel_width - 20
+            panel_y = 150
+            line_height = 28
+            max_items = min(10, len(self.queue_items))
+            panel_height = max_items * line_height + 60
+
+            # Panel background
+            panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+            panel_surface.fill((40, 40, 55, 230))
+            screen.blit(panel_surface, (panel_x, panel_y))
+            pygame.draw.rect(screen, (255, 180, 100), (panel_x, panel_y, panel_width, panel_height), 2, border_radius=8)
+
+            # Title
+            queue_title = self.fonts['medium'].render("QUEUE", True, (255, 180, 100))
+            screen.blit(queue_title, (panel_x + 10, panel_y + 8))
+
+            # Subtitle
+            queue_sub = self.fonts['tiny'].render("Click to remove from queue", True, UI_TEXT_DIM)
+            screen.blit(queue_sub, (panel_x + 10, panel_y + 35))
+
+            # Queue items (clickable)
+            self.queue_rects = []
+            item_y = panel_y + 55
+            for i, item in enumerate(self.queue_items[:max_items]):
+                display_name = item if len(item) <= 25 else item[:22] + "..."
+
+                # Clickable area
+                item_rect = pygame.Rect(panel_x + 5, item_y, panel_width - 10, line_height - 2)
+                self.queue_rects.append(item_rect)
+
+                # Highlight on hover
+                mouse_pos = pygame.mouse.get_pos()
+                if item_rect.collidepoint(mouse_pos):
+                    pygame.draw.rect(screen, (80, 60, 50), item_rect, border_radius=4)
+
+                # Item text
+                item_text = self.fonts['small'].render(f"  {display_name}", True, (255, 200, 150))
+                screen.blit(item_text, (panel_x + 10, item_y + 4))
+
+                item_y += line_height
+
+            # Show if there are more items
+            if len(self.queue_items) > max_items:
+                more_text = self.fonts['tiny'].render(f"+{len(self.queue_items) - max_items} more...", True, UI_TEXT_DIM)
+                screen.blit(more_text, (panel_x + 10, item_y))
 
 
 class BattleHUD:
@@ -555,26 +637,36 @@ class LeaderboardScreen:
         self.window_width = WINDOW_WIDTH
         self.window_height = WINDOW_HEIGHT
         center_x = WINDOW_WIDTH // 2
-        self.play_again_button = Button(center_x - 180, 700, 160, 50, "PLAY AGAIN", fonts['medium'])
-        self.quit_button = Button(center_x + 20, 700, 160, 50, "QUIT", fonts['medium'], color=(150, 60, 60), hover_color=(200, 80, 80))
+        # Top row buttons (for winner actions)
+        self.choose_button = Button(center_x - 250, 700, 150, 50, "CHOOSE", fonts['medium'], color=(50, 150, 50), hover_color=(70, 200, 70))
+        self.queue_button = Button(center_x - 75, 700, 150, 50, "QUEUE", fonts['medium'], color=(200, 150, 50), hover_color=(255, 180, 70))
+        # Bottom row buttons
+        self.play_again_button = Button(center_x + 100, 700, 150, 50, "PLAY AGAIN", fonts['medium'])
+        self.quit_button = Button(center_x + 270, 700, 100, 50, "QUIT", fonts['medium'], color=(150, 60, 60), hover_color=(200, 80, 80))
         self.rankings = []  # List of names from winner to last eliminated
         self.scroll_offset = 0
+        self.winner_name = ""
 
     def update_layout(self, window_width: int, window_height: int):
         self.window_width = window_width
         self.window_height = window_height
         center_x = window_width // 2
-        self.play_again_button.rect = pygame.Rect(center_x - 180, window_height - 80, 160, 50)
-        self.quit_button.rect = pygame.Rect(center_x + 20, window_height - 80, 160, 50)
+        self.choose_button.rect = pygame.Rect(center_x - 340, window_height - 80, 150, 50)
+        self.queue_button.rect = pygame.Rect(center_x - 165, window_height - 80, 150, 50)
+        self.play_again_button.rect = pygame.Rect(center_x + 10, window_height - 80, 150, 50)
+        self.quit_button.rect = pygame.Rect(center_x + 185, window_height - 80, 100, 50)
 
     def set_rankings(self, winner: str, eliminated: list):
         """Set rankings from winner (1st) and elimination order (last eliminated = 2nd)."""
         self.rankings = [winner] + list(reversed(eliminated))
         self.scroll_offset = 0
+        self.winner_name = winner
 
     def update(self, mouse_pos: tuple):
         self.play_again_button.update(mouse_pos)
         self.quit_button.update(mouse_pos)
+        self.choose_button.update(mouse_pos)
+        self.queue_button.update(mouse_pos)
 
     def handle_scroll(self, event: pygame.event.Event):
         if event.type == pygame.MOUSEWHEEL:
@@ -587,6 +679,12 @@ class LeaderboardScreen:
 
     def check_quit(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
         return self.quit_button.is_clicked(mouse_pos, mouse_clicked)
+
+    def check_choose(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        return self.choose_button.is_clicked(mouse_pos, mouse_clicked)
+
+    def check_queue(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        return self.queue_button.is_clicked(mouse_pos, mouse_clicked)
 
     def draw(self, screen: pygame.Surface):
         screen.fill(UI_BG)
@@ -639,8 +737,17 @@ class LeaderboardScreen:
             screen.blit(scroll_surface, scroll_rect)
 
         # Buttons
+        self.choose_button.draw(screen)
+        self.queue_button.draw(screen)
         self.play_again_button.draw(screen)
         self.quit_button.draw(screen)
+
+        # Button labels
+        choose_label = self.fonts['tiny'].render("Watch this movie", True, UI_TEXT_DIM)
+        screen.blit(choose_label, (self.choose_button.rect.centerx - choose_label.get_width() // 2, self.choose_button.rect.bottom + 5))
+
+        queue_label = self.fonts['tiny'].render("Add to queue, replay", True, UI_TEXT_DIM)
+        screen.blit(queue_label, (self.queue_button.rect.centerx - queue_label.get_width() // 2, self.queue_button.rect.bottom + 5))
 
 
 def create_fonts() -> dict:

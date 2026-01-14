@@ -17,17 +17,21 @@ STAT_RANGES = {
     'spin_power': (50, 100),      # Visual spin speed + slight damage bonus
     'attack': (10, 30),            # Damage dealt on collision
     'defense': (5, 20),            # Damage reduction
-    'stamina': (100, 200),         # Health pool
+    'stamina': (18, 40),           # Health pool - 20% higher for longer fights
     'weight': (0.5, 1.5),          # Mass multiplier (affects knockback)
 }
 
+# Avatar abilities - these are cast from the avatar, not the beyblade
+# They continue even after the beyblade is eliminated
+AVATAR_ABILITIES = ['fireball', 'ice', 'grenade', 'kamehameha', 'water', 'john_wick']
+
 # Physics
 MAX_SPEED = 15
-FRICTION = 0.992
-COLLISION_ELASTICITY = 0.8
+FRICTION = 0.995
+COLLISION_ELASTICITY = 0.6
 BASE_DAMAGE_MULTIPLIER = 0.5
-KNOCKBACK_FORCE = 2.0
-ARENA_SLOPE_STRENGTH = 0.15  # Bowl slope - creates orbital motion
+KNOCKBACK_FORCE = 1.2
+ARENA_SLOPE_STRENGTH = 0.20  # Bowl slope - creates orbital motion
 
 # Colors
 BLACK = (0, 0, 0)
@@ -91,12 +95,12 @@ SPEED_OPTIONS = [1, 2, 4]
 
 # Text
 FONT_SIZES = {
-    'tiny': 12,
-    'small': 16,
-    'medium': 24,
-    'large': 36,
-    'huge': 72,
-    'title': 48,
+    'tiny': 16,
+    'small': 20,
+    'medium': 28,
+    'large': 42,
+    'huge': 84,
+    'title': 56,
 }
 
 # Game states
@@ -108,13 +112,15 @@ STATE_LEADERBOARD = 'leaderboard'
 
 # File loading
 MOVIE_LIST_FILE = "movies.txt"
+QUEUE_FILE = "queue.txt"
+WATCHED_FILE = "watched.txt"
 
 # Avatar settings
 AVATAR_DISTANCE_FROM_ARENA = 60  # Pixels outside arena edge
 AVATAR_ELIMINATED_DIM = 0.5  # Color multiplier when eliminated
 
 # Abilities
-ABILITY_CHANCE = 0.30  # 30% chance to have an ability
+ABILITY_CHANCE = 1.0  # 100% chance to have an ability
 
 ABILITIES = {
     'glass_cannon': {
@@ -155,12 +161,30 @@ ABILITIES = {
         'description': 'Chance to ignore knockback',
         'trigger_chance': 0.20,
     },
-    'bouncy': {
-        'name': 'Bouncy',
-        'color': (255, 150, 255),
+    'vengeance': {
+        'name': 'Vengeance',
+        'color': (128, 0, 128),
         'type': 'triggered',
-        'description': 'Survive one ring-out',
-        'uses': 1,
+        'description': 'Stores damage, releases on next hit',
+    },
+    'reversal': {
+        'name': 'Reversal',
+        'color': (0, 200, 200),
+        'type': 'triggered',
+        'description': '10% chance to swap positions',
+        'trigger_chance': 0.10,
+    },
+    'parasite': {
+        'name': 'Parasite',
+        'color': (100, 150, 50),
+        'type': 'triggered',
+        'description': 'Latches to enemy, share damage',
+    },
+    'timebomb': {
+        'name': 'Timebomb',
+        'color': (50, 50, 50),
+        'type': 'triggered',
+        'description': 'Huge explosion after 20 seconds',
     },
     'counter': {
         'name': 'Counter',
@@ -175,12 +199,11 @@ ABILITIES = {
         'type': 'triggered',
         'description': 'Next hit 2x after taking big hit',
     },
-    'turbo': {
-        'name': 'Turbo',
-        'color': (0, 200, 255),
-        'type': 'triggered',
-        'description': 'Random speed boost',
-        'trigger_chance': 0.02,
+    'brutal': {
+        'name': 'Brutal',
+        'color': (200, 50, 50),
+        'type': 'passive',
+        'description': '+40% damage dealt',
     },
     'gambler': {
         'name': 'Gambler',
@@ -194,5 +217,252 @@ ABILITIES = {
         'type': 'triggered',
         'description': 'Copy ability on hit',
         'trigger_chance': 0.25,
+    },
+    'momentum': {
+        'name': 'Momentum',
+        'color': (100, 200, 255),
+        'type': 'passive',
+        'description': 'More damage at high speed',
+    },
+    'berserker': {
+        'name': 'Berserker',
+        'color': (180, 0, 0),
+        'type': 'passive',
+        'description': 'More damage at low HP',
+    },
+    'explosive': {
+        'name': 'Explosive',
+        'color': (255, 100, 0),
+        'type': 'triggered',
+        'description': 'Explodes on death',
+    },
+    'copycat': {
+        'name': 'Copycat',
+        'color': (180, 180, 180),
+        'type': 'triggered',
+        'description': 'Copies first ability hit',
+    },
+    'fireball': {
+        'name': 'Fireball',
+        'color': (255, 100, 0),
+        'type': 'active',
+        'description': 'Shoots fireballs toward center',
+    },
+    'portal': {
+        'name': 'Portal',
+        'color': (150, 50, 255),
+        'type': 'active',
+        'description': 'Creates linked portals on the field',
+    },
+    'zombie': {
+        'name': 'Zombie',
+        'color': (100, 150, 50),
+        'type': 'triggered',
+        'description': 'Revives once with 50% HP',
+    },
+    'last_stand': {
+        'name': 'Last Stand',
+        'color': (255, 215, 0),
+        'type': 'triggered',
+        'description': 'Invincible for 5s at low HP',
+    },
+    'earthquake': {
+        'name': 'Earthquake',
+        'color': (139, 90, 43),
+        'type': 'active',
+        'description': 'Shakes arena every 15 seconds',
+    },
+    'lightning_storm': {
+        'name': 'Lightning',
+        'color': (255, 255, 100),
+        'type': 'active',
+        'description': 'Strikes 3 random enemies periodically',
+    },
+    'inflation': {
+        'name': 'Inflation',
+        'color': (255, 150, 200),
+        'type': 'passive',
+        'description': 'Grows 5% larger per hit taken',
+    },
+    'shrinking': {
+        'name': 'Shrinking',
+        'color': (150, 200, 255),
+        'type': 'passive',
+        'description': 'Shrink 10% when hit (harder to hit)',
+    },
+    'mutually_assured': {
+        'name': 'M.A.D.',
+        'color': (200, 0, 0),
+        'type': 'triggered',
+        'description': 'On death, all lose 50% current HP',
+    },
+    'doomsday': {
+        'name': 'Doomsday',
+        'color': (50, 50, 50),
+        'type': 'active',
+        'description': 'After 30s, eliminates 2 nearest edge',
+    },
+    'swamp_thing': {
+        'name': 'Swamp Thing',
+        'color': (50, 120, 50),
+        'type': 'triggered',
+        'description': 'Stops all momentum once when fast',
+    },
+    'ice': {
+        'name': 'Ice',
+        'color': (150, 220, 255),
+        'type': 'active',
+        'description': 'Shoots ice that freezes and leaves slippery trails',
+    },
+    'grenade': {
+        'name': 'Grenade',
+        'color': (80, 100, 50),
+        'type': 'active',
+        'description': 'Throws grenades that explode on landing',
+    },
+    'kamehameha': {
+        'name': 'Kamehameha',
+        'color': (100, 180, 255),
+        'type': 'active',
+        'description': 'Charges and fires a powerful beam',
+    },
+    'water': {
+        'name': 'Water',
+        'color': (50, 150, 255),
+        'type': 'active',
+        'description': 'Splashes waves that push everything',
+    },
+    'venom': {
+        'name': 'Venom',
+        'color': (100, 0, 150),
+        'type': 'passive',
+        'description': '200% damage dealt over time',
+    },
+    'naruto': {
+        'name': 'Naruto',
+        'color': (255, 150, 50),
+        'type': 'triggered',
+        'description': 'Creates 2 clones, each with 1/3 HP',
+    },
+    'goku': {
+        'name': 'Goku',
+        'color': (255, 200, 50),
+        'type': 'active',
+        'description': 'Teleports behind random enemy',
+    },
+    'batman': {
+        'name': 'Batman',
+        'color': (30, 30, 30),
+        'type': 'passive',
+        'description': 'Immune to all ability effects',
+    },
+    'flash': {
+        'name': 'Flash',
+        'color': (255, 50, 50),
+        'type': 'passive',
+        'description': '100% faster with strong center pull',
+    },
+    'zoro': {
+        'name': 'Zoro',
+        'color': (50, 150, 50),
+        'type': 'triggered',
+        'description': '25% chance to slice through enemies',
+        'trigger_chance': 0.25,
+    },
+    'luffy': {
+        'name': 'Luffy',
+        'color': (200, 50, 50),
+        'type': 'passive',
+        'description': '2x bounce, survives 2 edge hits',
+    },
+    'andy_dufresne': {
+        'name': 'Andy Dufresne',
+        'color': (100, 80, 60),
+        'type': 'triggered',
+        'description': 'Respawns after 20s dead if heat continues',
+    },
+    'shelob': {
+        'name': 'Shelob',
+        'color': (40, 40, 40),
+        'type': 'passive',
+        'description': 'Crawls on 8 legs after 3s without being hit',
+    },
+    'the_prestige': {
+        'name': 'The Prestige',
+        'color': (80, 60, 100),
+        'type': 'triggered',
+        'description': 'Enters tournament twice as two copies',
+    },
+    'the_obelisk': {
+        'name': 'The Obelisk',
+        'color': (60, 60, 80),
+        'type': 'active',
+        'description': 'Spawns a bumper on the arena',
+    },
+    'kill_bill': {
+        'name': 'Kill Bill',
+        'color': (255, 220, 0),
+        'type': 'passive',
+        'description': '5x damage vs one random target per heat',
+    },
+    'american_psycho': {
+        'name': 'American Psycho',
+        'color': (180, 50, 50),
+        'type': 'passive',
+        'description': 'Damage resets after 20 seconds',
+    },
+    'little_miss_sunshine': {
+        'name': 'Little Miss Sunshine',
+        'color': (255, 255, 150),
+        'type': 'passive',
+        'description': 'Immune to damage from red/green beyblades',
+    },
+    'barry_lyndon': {
+        'name': 'Barry Lyndon',
+        'color': (180, 150, 100),
+        'type': 'triggered',
+        'description': 'Once per game: duel (90% win)',
+    },
+    'kevin_mcallister': {
+        'name': 'Kevin McAllister',
+        'color': (255, 200, 100),
+        'type': 'active',
+        'description': 'Leaves traps: nails & banana peels',
+    },
+    'ferris_bueller': {
+        'name': 'Ferris Bueller',
+        'color': (200, 50, 50),
+        'type': 'triggered',
+        'description': 'Joins 5 seconds late',
+    },
+    'alien': {
+        'name': 'Alien',
+        'color': (50, 80, 50),
+        'type': 'triggered',
+        'description': 'Juvenile infects host, adult +10% stats',
+    },
+    'amadeus': {
+        'name': 'Amadeus',
+        'color': (200, 180, 150),
+        'type': 'passive',
+        'description': 'Cannot die while rival lives',
+    },
+    'terminator': {
+        'name': 'Terminator',
+        'color': (150, 150, 180),
+        'type': 'passive',
+        'description': 'Hunts target after 3s without hit',
+    },
+    'oppenheimer': {
+        'name': 'Oppenheimer',
+        'color': (255, 150, 50),
+        'type': 'triggered',
+        'description': '1/200 chance to nuke half the field',
+    },
+    'john_wick': {
+        'name': 'John Wick',
+        'color': (50, 50, 50),
+        'type': 'active',
+        'description': 'Avatar shoots pistol bursts',
     },
 }

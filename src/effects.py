@@ -69,8 +69,6 @@ class SoundManager:
         self.sounds['knockout'] = self._make_sound(freq=500, duration=0.3, freq_end=100, volume=0.35)
         # Bouncy save - boing!
         self.sounds['bouncy'] = self._make_sound(freq=200, duration=0.2, freq_end=600, volume=0.3)
-        # Turbo - whoosh
-        self.sounds['turbo'] = self._make_sound(freq=300, duration=0.25, freq_end=900, volume=0.2)
         # Victory fanfare
         self.sounds['victory'] = self._make_victory_sound()
         # New round
@@ -87,6 +85,12 @@ class SoundManager:
         self.sounds['gambler_win'] = self._make_sound(freq=500, duration=0.15, freq_end=1000, volume=0.3)
         # Gambler lose
         self.sounds['gambler_lose'] = self._make_sound(freq=400, duration=0.2, freq_end=150, volume=0.25)
+        # Countdown beep (3, 2, 1)
+        self.sounds['countdown_beep'] = self._make_sound(freq=440, duration=0.15, freq_end=440, volume=0.4)
+        # Countdown GO! (higher, more exciting)
+        self.sounds['countdown_go'] = self._make_countdown_go()
+        # Bumper hit - pinball-style ding
+        self.sounds['bumper'] = self._make_sound(freq=800, duration=0.08, freq_end=1200, volume=0.35)
 
     def _make_sound(self, freq=440, duration=0.1, freq_end=None, volume=0.3):
         """Generate a simple synthesized sound."""
@@ -127,6 +131,28 @@ class SoundManager:
                 envelope = min(1.0, (1 - progress) * 2) * min(1.0, (i - start_sample) / (sample_rate * 0.01))
                 value = int(32767 * 0.3 * envelope * math.sin(2 * math.pi * note_freq * t))
                 buf[i] = max(-32767, min(32767, buf[i] + value))
+
+        return pygame.mixer.Sound(buffer=buf)
+
+    def _make_countdown_go(self):
+        """Generate an exciting GO! sound - quick ascending burst."""
+        sample_rate = 22050
+        duration = 0.25
+        n_samples = int(sample_rate * duration)
+        buf = array.array('h', [0] * n_samples)
+
+        # Two-tone burst: low to high
+        for i in range(n_samples):
+            t = i / sample_rate
+            progress = i / n_samples
+            # Quick sweep from 400 to 800 Hz
+            freq = 400 + 600 * progress
+            # Sharp attack, medium decay
+            envelope = min(1.0, (1 - progress) * 2) * min(1.0, i / (sample_rate * 0.005))
+            value = int(32767 * 0.45 * envelope * math.sin(2 * math.pi * freq * t))
+            # Add a harmonic for richness
+            value += int(32767 * 0.2 * envelope * math.sin(2 * math.pi * freq * 2 * t))
+            buf[i] = max(-32767, min(32767, value))
 
         return pygame.mixer.Sound(buffer=buf)
 
@@ -192,7 +218,7 @@ class EffectsManager:
             'color': color
         })
 
-    def spawn_ability_notification(self, beyblade_name: str, ability_text: str, color: tuple, sound_name: str = 'ability'):
+    def spawn_ability_notification(self, beyblade_name: str, ability_text: str, color: tuple, sound_name: str = 'ability', ability_name: str = None):
         """Add a notification to the scrolling log."""
         # Use a random fun color instead of the passed color for variety
         log_color = random.choice(NOTIFICATION_COLORS)
@@ -202,6 +228,7 @@ class EffectsManager:
             'text': ability_text,
             'color': log_color,
             'age': 0,  # Frames since added
+            'ability_name': ability_name,  # The name of the ability that triggered this
         })
 
         # Keep log trimmed
@@ -284,7 +311,8 @@ class EffectsManager:
             # Build text - only truncate names over 25 chars
             if entry['name']:
                 name_display = entry['name'][:22] + '...' if len(entry['name']) > 25 else entry['name']
-                text = f"{name_display}: {entry['text']}"
+                ability_prefix = f"[{entry.get('ability_name', '')}] " if entry.get('ability_name') else ""
+                text = f"{name_display}: {ability_prefix}{entry['text']}"
             else:
                 text = entry['text']
 
