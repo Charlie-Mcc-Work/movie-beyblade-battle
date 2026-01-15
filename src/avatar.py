@@ -48,10 +48,11 @@ class Avatar:
     BASE_ARM_LENGTH = 22
     BASE_LEG_LENGTH = 24
 
-    def __init__(self, beyblade_name: str, color: tuple, index: int, total_count: int):
+    def __init__(self, beyblade_name: str, color: tuple, index: int, total_count: int, ability: str = None):
         self.beyblade_name = beyblade_name
         self.index = index
         self.total_count = total_count
+        self.ability = ability
 
         # Generate unique traits using name hash as seed
         seed = hash(beyblade_name) & 0xFFFFFFFF
@@ -89,8 +90,9 @@ class Avatar:
         # Water ability state
         self.water_cooldown = random.randint(600, 900)  # 10-15 seconds initial
 
-        # John Wick pistol ability state
+        # John Wick pistol ability state (double-tap pattern)
         self.pistol_cooldown = 0
+        self.pistol_followup_pending = False  # True when waiting for follow-up shot
 
     def update_position(self, arena_cx: int, arena_cy: int, arena_radius: int,
                         finals_mode: bool = False, rect_left: int = 0, rect_right: int = 0,
@@ -207,11 +209,20 @@ class Avatar:
         # Draw arms
         self._draw_arms(screen, shoulder_x, shoulder_y, left_arm, right_arm, arm_len, thick, color)
 
+        # Draw gun for John Wick
+        if self.ability == 'john_wick':
+            self._draw_gun(screen, shoulder_x, shoulder_y, right_arm, arm_len, thick)
+
         # Draw head
         self._draw_head(screen, head_x, head_y, head_r, thick, color)
 
-        # Draw accessory
-        self._draw_accessory(screen, head_x, head_y, head_r, color)
+        # Draw super saiyan hair for Kamehameha
+        if self.ability == 'kamehameha':
+            self._draw_super_saiyan_hair(screen, head_x, head_y, head_r)
+
+        # Draw accessory (skip for kamehameha since they have super saiyan hair)
+        if self.ability != 'kamehameha':
+            self._draw_accessory(screen, head_x, head_y, head_r, color)
 
         # Draw name below avatar
         self._draw_name(screen, hip_x, hip_y + leg_len + 5, color)
@@ -359,6 +370,60 @@ class Avatar:
             pygame.draw.circle(screen, color, (x - head_r, y), 4, 2)
             pygame.draw.circle(screen, color, (x + head_r, y), 4, 2)
 
+    def _draw_gun(self, screen: pygame.Surface, sx: int, sy: int, arm_angle: float, arm_len: int, thickness: int):
+        """Draw a pistol in the right hand for John Wick."""
+        # Calculate hand position (end of right arm)
+        hand_x = int(sx + math.cos(arm_angle) * arm_len)
+        hand_y = int(sy + math.sin(arm_angle) * arm_len)
+
+        # Gun parameters
+        gun_color = (40, 40, 40)  # Dark gray/black
+        barrel_len = 12
+        grip_len = 8
+
+        # Gun points outward from hand in arm direction
+        barrel_end_x = int(hand_x + math.cos(arm_angle) * barrel_len)
+        barrel_end_y = int(hand_y + math.sin(arm_angle) * barrel_len)
+
+        # Grip points perpendicular to barrel (downward-ish)
+        grip_angle = arm_angle + math.pi * 0.5
+        grip_end_x = int(hand_x + math.cos(grip_angle) * grip_len)
+        grip_end_y = int(hand_y + math.sin(grip_angle) * grip_len)
+
+        # Draw barrel
+        pygame.draw.line(screen, gun_color, (hand_x, hand_y), (barrel_end_x, barrel_end_y), thickness + 1)
+
+        # Draw grip
+        pygame.draw.line(screen, gun_color, (hand_x, hand_y), (grip_end_x, grip_end_y), thickness)
+
+    def _draw_super_saiyan_hair(self, screen: pygame.Surface, x: int, y: int, head_r: int):
+        """Draw spiky golden super saiyan hair."""
+        hair_color = (255, 215, 0)  # Golden yellow
+        glow_color = (255, 255, 100)  # Lighter glow
+
+        # Draw multiple spikes radiating upward
+        spike_configs = [
+            (-8, -head_r - 2, -12, -head_r - 18),   # Left outer spike
+            (-4, -head_r - 1, -5, -head_r - 22),    # Left inner spike
+            (0, -head_r, 0, -head_r - 25),          # Center spike (tallest)
+            (4, -head_r - 1, 5, -head_r - 22),      # Right inner spike
+            (8, -head_r - 2, 12, -head_r - 18),     # Right outer spike
+            (-10, -head_r + 3, -16, -head_r - 8),   # Far left spike
+            (10, -head_r + 3, 16, -head_r - 8),     # Far right spike
+        ]
+
+        # Draw glow spikes first (thicker, lighter)
+        for base_dx, base_dy, tip_dx, tip_dy in spike_configs:
+            base = (x + base_dx, y + base_dy)
+            tip = (x + tip_dx, y + tip_dy)
+            pygame.draw.line(screen, glow_color, base, tip, 4)
+
+        # Draw main spikes on top
+        for base_dx, base_dy, tip_dx, tip_dy in spike_configs:
+            base = (x + base_dx, y + base_dy)
+            tip = (x + tip_dx, y + tip_dy)
+            pygame.draw.line(screen, hair_color, base, tip, 2)
+
     def _draw_arms(self, screen: pygame.Surface, sx: int, sy: int,
                    left_angle: float, right_angle: float, arm_len: int, thickness: int, color: tuple):
         """Draw both arms."""
@@ -422,7 +487,8 @@ class AvatarManager:
                 beyblade_name=beyblade.name,
                 color=beyblade.color,
                 index=i,
-                total_count=len(beyblades)
+                total_count=len(beyblades),
+                ability=beyblade.ability
             )
             avatar.update_position(
                 arena.center_x, arena.center_y, arena.radius,

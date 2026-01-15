@@ -319,9 +319,9 @@ class EffectsManager:
             text_color = tuple(int(c * alpha) for c in entry['color'])
             text_surface = font.render(text, True, text_color)
 
-            # Subtle background
+            # Solid background for readability
             bg_surface = pygame.Surface((text_surface.get_width() + 10, line_height - 2), pygame.SRCALPHA)
-            bg_surface.fill((0, 0, 0, int(100 * alpha)))
+            bg_surface.fill((20, 20, 30, int(230 * alpha)))
             screen.blit(bg_surface, (log_x - 5, y))
 
             screen.blit(text_surface, (log_x, y + 2))

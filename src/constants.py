@@ -36,6 +36,7 @@ ARENA_SLOPE_STRENGTH = 0.20  # Bowl slope - creates orbital motion
 # Colors
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
+LIGHT_BLUE = (173, 216, 230)
 GRAY = (128, 128, 128)
 DARK_GRAY = (40, 40, 40)
 LIGHT_GRAY = (200, 200, 200)
@@ -464,5 +465,47 @@ ABILITIES = {
         'color': (50, 50, 50),
         'type': 'active',
         'description': 'Avatar shoots pistol bursts',
+    },
+    'interstellar': {
+        'name': 'Interstellar',
+        'color': (20, 10, 40),
+        'type': 'passive',
+        'description': 'Black hole at spawn pulls nearby enemies',
+    },
+    'barbie': {
+        'name': 'Barbie',
+        'color': (255, 105, 180),
+        'type': 'triggered',
+        'description': 'Splits into 2 fragile pieces on death',
+    },
+    'truman': {
+        'name': 'Truman',
+        'color': (135, 206, 235),
+        'type': 'passive',
+        'description': 'Always spawns in center of arena',
+    },
+    'neo': {
+        'name': 'Neo',
+        'color': (0, 50, 0),
+        'type': 'triggered',
+        'description': 'Resets heat if killed in first 0.5s',
+    },
+    'deadpool': {
+        'name': 'Deadpool',
+        'color': (180, 0, 0),
+        'type': 'passive',
+        'description': 'Regenerates health over time',
+    },
+    'marty_mauser': {
+        'name': 'Marty Mauser',
+        'color': (255, 140, 0),
+        'type': 'passive',
+        'description': 'Reflects all projectiles',
+    },
+    'marty_mcfly': {
+        'name': 'Marty McFly',
+        'color': (255, 50, 50),
+        'type': 'triggered',
+        'description': 'Teleports to spawn once when near edge',
     },
 }

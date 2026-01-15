@@ -107,6 +107,23 @@ class Beyblade:
         self.terminator_target = None  # Current target name
         self.terminator_no_hit_timer = 0  # Frames since last hit
 
+        # Interstellar - black hole tracking
+        self.interstellar_spawn_x = 0  # Where to place black hole
+        self.interstellar_spawn_y = 0
+
+        # Barbie - split on death
+        self.barbie_is_fragment = False  # True if this is a Barbie fragment
+        self.barbie_split_done = False  # True if already split
+
+        # Neo - death timer for reset check
+        self.neo_spawn_frame = 0  # Frame number when spawned
+        self.neo_reset_used = False  # True if already reset this heat
+
+        # Marty McFly - teleport back to spawn once per heat when near edge
+        self.marty_mcfly_spawn_x = 0
+        self.marty_mcfly_spawn_y = 0
+        self.marty_mcfly_used = False  # True if already teleported this heat
+
         # State
         self.alive = True
         self.knockout_timer = 0
@@ -320,14 +337,14 @@ def resolve_collision(b1: Beyblade, b2: Beyblade) -> tuple:
     # Zoro: 25% chance to slice through without bouncing
     zoro_slice = False
     if b1.ability == 'zoro' and random.random() < 0.25:
-        # b1 slices through b2 - deal good damage but no bounce
-        slice_damage = b1.attack * 0.8 + relative_speed * 0.5
+        # b1 slices through b2 - moderate damage but no bounce
+        slice_damage = b1.attack * 0.5 + relative_speed * 0.3
         if b2.ability != 'batman':  # Batman is immune
             b2.stamina -= slice_damage
         triggers.append((b1.name, 'SLICE!', ABILITIES['zoro']['color'], 'Zoro'))
         zoro_slice = True
     if b2.ability == 'zoro' and random.random() < 0.25:
-        slice_damage = b2.attack * 0.8 + relative_speed * 0.5
+        slice_damage = b2.attack * 0.5 + relative_speed * 0.3
         if b1.ability != 'batman':
             b1.stamina -= slice_damage
         triggers.append((b2.name, 'SLICE!', ABILITIES['zoro']['color'], 'Zoro'))

@@ -209,6 +209,13 @@ class Arena:
         # Rectangle dimensions for finals (calculated from radius)
         self._update_rect_dimensions()
 
+        # Closing edges state for finals
+        self.finals_timer = 0
+        self.current_rect_left = self.rect_left
+        self.current_rect_right = self.rect_right
+        self.edges_closing = False
+        self.close_speed = 0.15  # Pixels per frame
+
     def _update_rect_dimensions(self):
         """Update rectangle dimensions based on current radius."""
         # Height matches circle diameter, width is 1.8x wider
@@ -218,14 +225,24 @@ class Arena:
         self.rect_right = self.center_x + self.rect_width // 2
         self.rect_top = self.center_y - self.rect_height // 2
         self.rect_bottom = self.center_y + self.rect_height // 2
+        # Reset current edges to match (unless they've already started closing)
+        if not hasattr(self, 'edges_closing') or not self.edges_closing:
+            self.current_rect_left = self.rect_left
+            self.current_rect_right = self.rect_right
 
     def set_finals_mode(self, enabled: bool):
         """Enable or disable finals rectangle mode."""
         self.finals_mode = enabled
         if enabled:
             self._create_bumpers()
+            # Reset closing edges state
+            self.finals_timer = 0
+            self.current_rect_left = self.rect_left
+            self.current_rect_right = self.rect_right
+            self.edges_closing = False
         else:
             self.bumpers.clear()
+            self.edges_closing = False
 
     def _create_bumpers(self):
         """Create pinball bumpers for finals arena."""
@@ -270,9 +287,22 @@ class Arena:
         return (self.center_x - old_center_x, self.center_y - old_center_y)
 
     def update(self):
-        """Update arena state (bumper animations)."""
+        """Update arena state (bumper animations, closing edges)."""
         for bumper in self.bumpers:
             bumper.update()
+
+        # Handle closing edges in finals mode
+        if self.finals_mode:
+            self.finals_timer += 1
+            # Start closing after 30 seconds (1800 frames at 60fps)
+            if self.finals_timer >= 1800:
+                self.edges_closing = True
+
+            if self.edges_closing:
+                # Move edges closer to center until they meet (forces end)
+                if self.current_rect_left < self.current_rect_right:
+                    self.current_rect_left += self.close_speed
+                    self.current_rect_right -= self.close_speed
 
     def apply_boundary(self, beyblade: Beyblade) -> bool:
         """Apply arena boundary physics. Returns True if bumper was hit."""
@@ -342,7 +372,7 @@ class Arena:
                 beyblade.die()
 
     def _apply_rectangle_boundary(self, beyblade: Beyblade):
-        """Rectangle arena - bounce on top/bottom, ring-out on left/right."""
+        """Rectangle arena - bounce on top/bottom, ring-out on left/right (edges close in over time)."""
         # Gravity toward center for more dynamic movement
         dx = beyblade.x - self.center_x
         dy = beyblade.y - self.center_y
@@ -361,28 +391,28 @@ class Arena:
             beyblade.y = self.rect_bottom - beyblade.radius
             beyblade.vy = -abs(beyblade.vy) * 0.8  # Bounce up
 
-        # Left side ring-out (Luffy gets saves, Amadeus survives while rival lives)
-        if beyblade.x < self.rect_left:
+        # Left side ring-out (uses current_rect_left which closes in over time)
+        if beyblade.x < self.current_rect_left:
             if beyblade.ability == 'luffy' and beyblade.luffy_edge_saves > 0:
                 beyblade.luffy_edge_saves -= 1
-                beyblade.x = self.rect_left + beyblade.radius + 10
+                beyblade.x = self.current_rect_left + beyblade.radius + 10
                 beyblade.vx = abs(beyblade.vx) + 8  # Bounce right
             elif beyblade.ability == 'amadeus' and beyblade.amadeus_rival_alive:
                 beyblade.stamina = max(1, beyblade.stamina)
-                beyblade.x = self.rect_left + beyblade.radius + 10
+                beyblade.x = self.current_rect_left + beyblade.radius + 10
                 beyblade.vx = abs(beyblade.vx) + 6  # Bounce right
             else:
                 beyblade.die()
 
-        # Right side ring-out (Luffy gets saves, Amadeus survives while rival lives)
-        if beyblade.x > self.rect_right:
+        # Right side ring-out (uses current_rect_right which closes in over time)
+        if beyblade.x > self.current_rect_right:
             if beyblade.ability == 'luffy' and beyblade.luffy_edge_saves > 0:
                 beyblade.luffy_edge_saves -= 1
-                beyblade.x = self.rect_right - beyblade.radius - 10
+                beyblade.x = self.current_rect_right - beyblade.radius - 10
                 beyblade.vx = -abs(beyblade.vx) - 8  # Bounce left
             elif beyblade.ability == 'amadeus' and beyblade.amadeus_rival_alive:
                 beyblade.stamina = max(1, beyblade.stamina)
-                beyblade.x = self.rect_right - beyblade.radius - 10
+                beyblade.x = self.current_rect_right - beyblade.radius - 10
                 beyblade.vx = -abs(beyblade.vx) - 6  # Bounce left
             else:
                 beyblade.die()
@@ -455,6 +485,37 @@ class Arena:
 
         # Main floor
         pygame.draw.rect(screen, ARENA_FLOOR, floor_rect, border_radius=3)
+
+        # Draw danger zones if edges are closing
+        if self.edges_closing:
+            danger_color = (80, 30, 30)  # Dark red tint
+            warning_color = (150, 50, 50)  # Brighter red for edge line
+
+            # Left danger zone (area that's now ring-out)
+            left_danger_width = int(self.current_rect_left - self.rect_left)
+            if left_danger_width > 0:
+                left_danger = pygame.Rect(
+                    self.rect_left, self.rect_top,
+                    left_danger_width, self.rect_height
+                )
+                pygame.draw.rect(screen, danger_color, left_danger)
+                # Draw warning line at current boundary
+                pygame.draw.line(screen, warning_color,
+                                 (int(self.current_rect_left), self.rect_top),
+                                 (int(self.current_rect_left), self.rect_bottom), 3)
+
+            # Right danger zone
+            right_danger_width = int(self.rect_right - self.current_rect_right)
+            if right_danger_width > 0:
+                right_danger = pygame.Rect(
+                    int(self.current_rect_right), self.rect_top,
+                    right_danger_width, self.rect_height
+                )
+                pygame.draw.rect(screen, danger_color, right_danger)
+                # Draw warning line at current boundary
+                pygame.draw.line(screen, warning_color,
+                                 (int(self.current_rect_right), self.rect_top),
+                                 (int(self.current_rect_right), self.rect_bottom), 3)
 
         # Floor detail lines (horizontal)
         for i in range(1, 6):

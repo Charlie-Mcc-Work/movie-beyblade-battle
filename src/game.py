@@ -3,7 +3,7 @@ import random
 import math
 import os
 from .constants import (
-    WINDOW_WIDTH, WINDOW_HEIGHT, FPS, UI_BG,
+    WINDOW_WIDTH, WINDOW_HEIGHT, FPS, UI_BG, WHITE, LIGHT_BLUE,
     STATE_INPUT, STATE_BATTLE, STATE_HEAT_TRANSITION, STATE_VICTORY, STATE_LEADERBOARD,
     BEYBLADE_COLORS, ABILITY_CHANCE, ABILITIES, ARENA_RADIUS, AVATAR_ABILITIES,
     MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE
@@ -109,6 +109,16 @@ class Game:
         # John Wick bullets: [{'x', 'y', 'vx', 'vy', 'owner_name', 'lifetime'}]
         self.bullets = []
 
+        # Interstellar black holes: [{'x', 'y', 'owner_name'}]
+        self.black_holes = []
+
+        # Neo heat reset tracking
+        self.heat_start_frame = 0
+        self.current_frame = 0
+        self.neo_reset_used_this_heat = False
+        self.neo_reset_countdown = 0  # Frames to show reset message
+        self.neo_reset_name = ""  # Name of Neo who triggered reset
+
         # Once-per-game ability tracking
         self.barry_lyndon_used = set()
         self.oppenheimer_used = set()
@@ -164,14 +174,14 @@ class Game:
         for movie in prestige_movies:
             movie_list.append(f"{movie} (Double)")
 
-        # Shuffle movies
+        # Shuffle all movies (including prestige duplicates) for random heat placement
         random.shuffle(movie_list)
 
         # If few movies, just run single battle (no heats needed)
         if len(movie_list) <= self.max_per_heat:
-            self.heats = [movie_list]
+            self.heats = [movie_list.copy()]  # Use copy to avoid reference issues
         else:
-            # Split into heats
+            # Split into heats (slicing creates new lists)
             self.heats = []
             for i in range(0, len(movie_list), self.max_per_heat):
                 heat = movie_list[i:i + self.max_per_heat]
@@ -185,7 +195,7 @@ class Game:
         self.speed_multiplier = 1
         self.battle_hud.current_speed = 1
 
-    def _start_heat(self, heat_index: int):
+    def _start_heat(self, heat_index: int, is_neo_reset: bool = False):
         """Start a specific heat battle."""
         self.current_heat = heat_index
         self.round_number = 1
@@ -202,6 +212,12 @@ class Game:
         self.obelisk_bumpers.clear()
         self.traps.clear()
         self.bullets.clear()
+        self.black_holes.clear()
+        self.heat_start_frame = self.current_frame
+
+        # Only reset Neo flag if this is a normal heat start, not a Neo reset
+        if not is_neo_reset:
+            self.neo_reset_used_this_heat = False
 
         if self.is_finals:
             movies = self.heat_winners
@@ -222,10 +238,12 @@ class Game:
 
     def _spawn_beyblades(self, movie_list: list):
         """Spawn beyblades with positions and tangential velocities."""
-        random.shuffle(movie_list)
-        spawns = self.arena.get_spawn_positions(len(movie_list))
+        # Create a copy to shuffle for spawn positions without modifying original
+        movies_to_spawn = movie_list.copy()
+        random.shuffle(movies_to_spawn)
+        spawns = self.arena.get_spawn_positions(len(movies_to_spawn))
 
-        for i, (movie, spawn) in enumerate(zip(movie_list, spawns)):
+        for i, (movie, spawn) in enumerate(zip(movies_to_spawn, spawns)):
             x, y, vx, vy = spawn
             beyblade = Beyblade(movie, x, y, i)
             beyblade.vx = vx
@@ -258,6 +276,33 @@ class Game:
             if beyblade.ability == 'doomsday':
                 beyblade.doomsday_timer = 1800  # 30 seconds
 
+            # Truman: spawn in center of arena
+            if beyblade.ability == 'truman':
+                beyblade.x = self.arena.center_x
+                beyblade.y = self.arena.center_y
+                beyblade.vx = random.uniform(-2, 2)
+                beyblade.vy = random.uniform(-2, 2)
+
+            # Interstellar: record spawn position for black hole
+            if beyblade.ability == 'interstellar':
+                beyblade.interstellar_spawn_x = beyblade.x
+                beyblade.interstellar_spawn_y = beyblade.y
+                self.black_holes.append({
+                    'x': beyblade.x,
+                    'y': beyblade.y,
+                    'owner_name': beyblade.name
+                })
+
+            # Neo: record spawn frame for reset check
+            if beyblade.ability == 'neo':
+                beyblade.neo_spawn_frame = self.current_frame
+
+            # Marty McFly: record spawn position for teleport ability
+            if beyblade.ability == 'marty_mcfly':
+                beyblade.marty_mcfly_spawn_x = beyblade.x
+                beyblade.marty_mcfly_spawn_y = beyblade.y
+                beyblade.marty_mcfly_used = False
+
             self.beyblades.append(beyblade)
 
             # Naruto: create 2 clones, each with 1/3 HP (including original)
@@ -268,13 +313,18 @@ class Game:
                 beyblade.stamina = third_hp
                 beyblade.max_stamina = third_hp
 
-                # Create 2 clones
+                # Create 2 clones - spawn in distinct positions to avoid immediate collision
+                clone_offsets = [
+                    (80, 40),   # Clone 1: offset right and down
+                    (-80, -40), # Clone 2: offset left and up
+                ]
                 for clone_num in range(2):
+                    offset_x, offset_y = clone_offsets[clone_num]
                     clone = Beyblade(f"{movie} (Clone {clone_num + 1})", x, y, i)
-                    clone.vx = vx + random.uniform(-3, 3)
-                    clone.vy = vy + random.uniform(-3, 3)
-                    clone.x = x + random.uniform(-30, 30)
-                    clone.y = y + random.uniform(-30, 30)
+                    clone.vx = vx + random.uniform(-2, 2)
+                    clone.vy = vy + random.uniform(-2, 2)
+                    clone.x = x + offset_x + random.uniform(-10, 10)
+                    clone.y = y + offset_y + random.uniform(-10, 10)
                     clone.ability = 'naruto'
                     clone.ability_data = beyblade.ability_data.copy() if beyblade.ability_data else None
                     clone.color = beyblade.color
@@ -427,6 +477,10 @@ class Game:
             if self.battle_hud.check_mute_click(mouse_pos, mouse_clicked):
                 self.effects.sound.muted = self.battle_hud.muted
 
+            # Handle Neo reset message countdown
+            if self.neo_reset_countdown > 0:
+                self.neo_reset_countdown -= 1
+
             # Handle countdown
             if self.countdown_active:
                 self.countdown_timer -= 1
@@ -484,8 +538,30 @@ class Game:
                 self.state = STATE_INPUT
 
     def update_battle(self):
+        # Increment frame counter
+        self.current_frame += 1
+
         # Update arena (bumper animations)
         self.arena.update()
+
+        # Interstellar: black holes pull nearby beyblades
+        for black_hole in self.black_holes:
+            for beyblade in self.beyblades:
+                if beyblade.alive and beyblade.name != black_hole['owner_name']:
+                    dx = black_hole['x'] - beyblade.x
+                    dy = black_hole['y'] - beyblade.y
+                    dist = math.sqrt(dx * dx + dy * dy)
+                    if dist > 0 and dist < 400:  # Large cone of influence
+                        # 1.5x the normal center pull strength
+                        pull_strength = 0.18 * (1 - dist / 400)  # Stronger when closer
+                        beyblade.vx += (dx / dist) * pull_strength
+                        beyblade.vy += (dy / dist) * pull_strength
+
+        # Deadpool: regenerate health over time
+        for beyblade in self.beyblades:
+            if beyblade.alive and beyblade.ability == 'deadpool':
+                regen_rate = 0.05  # HP per frame
+                beyblade.stamina = min(beyblade.max_stamina, beyblade.stamina + regen_rate)
 
         # Update Amadeus rival status (needed for edge bounce check)
         alive_names = {b.name for b in self.beyblades if b.alive}
@@ -497,6 +573,36 @@ class Game:
         for beyblade in self.beyblades:
             beyblade.update()
             if beyblade.alive:
+                # Marty McFly: teleport back to spawn when within 10% of edge (once per heat)
+                if beyblade.ability == 'marty_mcfly' and not beyblade.marty_mcfly_used:
+                    near_edge = False
+                    if self.arena.finals_mode:
+                        # Rectangle arena: check distance from closing left/right edges
+                        arena_width = self.arena.current_rect_right - self.arena.current_rect_left
+                        edge_threshold = arena_width * 0.1
+                        if (beyblade.x < self.arena.current_rect_left + edge_threshold or
+                            beyblade.x > self.arena.current_rect_right - edge_threshold):
+                            near_edge = True
+                    else:
+                        # Circular arena: check distance from center vs radius
+                        dx = beyblade.x - self.arena.center_x
+                        dy = beyblade.y - self.arena.center_y
+                        dist_from_center = math.sqrt(dx**2 + dy**2)
+                        if dist_from_center > self.arena.radius * 0.9:
+                            near_edge = True
+
+                    if near_edge:
+                        # Teleport back to spawn position
+                        beyblade.x = beyblade.marty_mcfly_spawn_x
+                        beyblade.y = beyblade.marty_mcfly_spawn_y
+                        beyblade.vx = 0
+                        beyblade.vy = 0
+                        beyblade.marty_mcfly_used = True
+                        self.effects.spawn_ability_notification(
+                            beyblade.name, 'BACK IN TIME!', ABILITIES['marty_mcfly']['color'], 'ability', 'Marty McFly'
+                        )
+                        self.effects.sound.play('teleport')
+
                 bumper_hit = self.arena.apply_boundary(beyblade)
                 if bumper_hit:
                     # Spawn sparks and play sound for bumper hit
@@ -601,6 +707,15 @@ class Game:
                     dy = beyblade.y - fireball['y']
                     dist = math.sqrt(dx**2 + dy**2)
                     if dist < beyblade.radius + 8:  # 8 is fireball radius
+                        # Marty Mauser: reflect projectiles back
+                        if beyblade.ability == 'marty_mauser':
+                            fireball['vx'] = -fireball['vx']
+                            fireball['vy'] = -fireball['vy']
+                            fireball['owner_name'] = beyblade.name
+                            fireball['lifetime'] = 180
+                            self.effects.spawn_collision_sparks(fireball['x'], fireball['y'], 0.5)
+                            self.effects.spawn_ability_notification(beyblade.name, 'REFLECT!', ABILITIES['marty_mauser']['color'], 'ability', 'Marty Mauser')
+                            break
                         # Hit! Apply knockback like a regular collision (Batman immune)
                         if dist > 0 and beyblade.ability != 'batman':
                             knockback = 10
@@ -667,6 +782,15 @@ class Game:
                     dy = beyblade.y - ice['y']
                     dist = math.sqrt(dx**2 + dy**2)
                     if dist < beyblade.radius + 10:  # 10 is ice radius
+                        # Marty Mauser: reflect projectiles back
+                        if beyblade.ability == 'marty_mauser':
+                            ice['vx'] = -ice['vx']
+                            ice['vy'] = -ice['vy']
+                            ice['owner_name'] = beyblade.name
+                            ice['lifetime'] = 240
+                            self.effects.spawn_collision_sparks(ice['x'], ice['y'], 0.5)
+                            self.effects.spawn_ability_notification(beyblade.name, 'REFLECT!', ABILITIES['marty_mauser']['color'], 'ability', 'Marty Mauser')
+                            break
                         # Hit! Freeze the beyblade (Batman immune)
                         if beyblade.ability != 'batman':
                             beyblade.ice_frozen_timer = 60  # 1 second freeze
@@ -1388,7 +1512,7 @@ class Game:
                                     self.effects.spawn_knockout_effect(target.x, target.y, target.color, target.name)
                                     self.effects.spawn_collision_sparks(target.x, target.y, 5.0)
 
-        # John Wick: avatar shoots pistol bursts
+        # John Wick: avatar shoots double-tap pistol pattern
         for beyblade in self.beyblades:
             if beyblade.ability == 'john_wick':
                 avatar = self.avatar_manager.avatars.get(beyblade.name)
@@ -1410,21 +1534,28 @@ class Game:
                         dist = math.sqrt(dx * dx + dy * dy)
                         if dist > 0:
                             speed = 15
-                            base_angle = math.atan2(dy, dx)
+                            shoot_angle = math.atan2(dy, dx)
 
-                            # Two bullets with slight spread
-                            for offset in [-0.1, 0.1]:
-                                shoot_angle = base_angle + offset
-                                self.bullets.append({
-                                    'x': avatar.x,
-                                    'y': avatar.y,
-                                    'vx': math.cos(shoot_angle) * speed,
-                                    'vy': math.sin(shoot_angle) * speed,
-                                    'owner_name': beyblade.name,
-                                    'lifetime': 90,
-                                })
+                            # Single bullet per shot (double-tap pattern)
+                            self.bullets.append({
+                                'x': avatar.x,
+                                'y': avatar.y,
+                                'vx': math.cos(shoot_angle) * speed,
+                                'vy': math.sin(shoot_angle) * speed,
+                                'owner_name': beyblade.name,
+                                'lifetime': 90,
+                            })
                             self.effects.sound.play('hit')
-                        avatar.pistol_cooldown = 45  # 0.75 seconds between bursts
+
+                        # Double-tap timing: quick follow-up, then longer wait
+                        if avatar.pistol_followup_pending:
+                            # This was the follow-up shot, wait longer before next double-tap
+                            avatar.pistol_cooldown = 120  # 2 seconds before next double-tap
+                            avatar.pistol_followup_pending = False
+                        else:
+                            # First shot done, quick follow-up coming
+                            avatar.pistol_cooldown = 10  # ~0.17 seconds for follow-up
+                            avatar.pistol_followup_pending = True
 
         # Update bullets
         bullets_to_remove = []
@@ -1443,12 +1574,21 @@ class Game:
                     dy = target.y - bullet['y']
                     dist = math.sqrt(dx * dx + dy * dy)
                     if dist < target.radius + 4:
-                        # Hit!
+                        # Marty Mauser: reflect projectiles back
+                        if target.ability == 'marty_mauser':
+                            bullet['vx'] = -bullet['vx']
+                            bullet['vy'] = -bullet['vy']
+                            bullet['owner_name'] = target.name  # Now owned by reflector
+                            bullet['lifetime'] = 90  # Reset lifetime
+                            self.effects.spawn_collision_sparks(bullet['x'], bullet['y'], 0.5)
+                            self.effects.spawn_ability_notification(target.name, 'REFLECT!', ABILITIES['marty_mauser']['color'], 'ability', 'Marty Mauser')
+                            break
+                        # Hit! Minimal knockback but decent damage
                         if dist > 0:
-                            knockback = 6
+                            knockback = 2
                             target.vx += (dx / dist) * knockback
                             target.vy += (dy / dist) * knockback
-                            target.stamina -= 2
+                            target.stamina -= 4
                         self.effects.spawn_collision_sparks(bullet['x'], bullet['y'], 0.3)
                         bullets_to_remove.append(bullet)
                         break
@@ -1460,6 +1600,44 @@ class Game:
         # Check for new eliminations (with zombie revival and mutually assured)
         for beyblade in self.beyblades:
             if not beyblade.alive and beyblade.name not in self.eliminated:
+                # Neo: reset heat if killed in first 0.5 seconds (30 frames), once per heat
+                if beyblade.ability == 'neo' and not self.neo_reset_used_this_heat:
+                    frames_alive = self.current_frame - beyblade.neo_spawn_frame
+                    if frames_alive <= 30:
+                        self.neo_reset_used_this_heat = True  # Mark as used before reset
+                        # Big visual notification
+                        self.effects.spawn_ability_notification(beyblade.name, 'MATRIX RESET!', ABILITIES['neo']['color'], 'ability', 'Neo')
+                        # Add a countdown-style reset message
+                        self.neo_reset_countdown = 120  # 2 second display
+                        self.neo_reset_name = beyblade.name
+                        # Reset the heat
+                        self._start_heat(self.current_heat, is_neo_reset=True)
+                        return  # Exit update_battle, heat is restarting
+
+                # Barbie: split into two fragile pieces on death
+                if beyblade.ability == 'barbie' and not beyblade.barbie_split_done and not beyblade.barbie_is_fragment:
+                    beyblade.barbie_split_done = True
+                    # Create two fragments
+                    for i, offset in enumerate([(-30, -20), (30, 20)]):
+                        fragment = Beyblade(f"{beyblade.name} (Fragment {i+1})", beyblade.x + offset[0], beyblade.y + offset[1], 0)
+                        fragment.color = beyblade.color
+                        fragment.ability = 'barbie'
+                        fragment.ability_data = ABILITIES['barbie'].copy()
+                        fragment.barbie_is_fragment = True
+                        fragment.barbie_split_done = True
+                        fragment.stamina = 1  # Dies from one hit
+                        fragment.max_stamina = 1
+                        fragment.radius = int(beyblade.radius * 0.7)
+                        fragment.vx = random.uniform(-5, 5)
+                        fragment.vy = random.uniform(-5, 5)
+                        self.beyblades.append(fragment)
+                    self.effects.spawn_ability_notification(beyblade.name, 'SPLIT!', ABILITIES['barbie']['color'], 'ability', 'Barbie')
+                    self.effects.spawn_collision_sparks(beyblade.x, beyblade.y, 2.0)
+                    # Still add original to eliminated
+                    self.eliminated.append(beyblade.name)
+                    self.all_eliminated.append(beyblade.name)
+                    continue
+
                 # Check for zombie revival
                 if beyblade.ability == 'zombie' and beyblade.name not in self.zombie_used:
                     # Revive with 50% HP
@@ -1647,6 +1825,85 @@ class Game:
         self._start_heat(self.pending_next_heat)
         self.state = STATE_BATTLE
 
+    def _draw_ability_legend(self):
+        """Draw a legend showing current movies, their abilities, and descriptions."""
+        # Get unique beyblades (excluding clones and fragments for cleaner display)
+        legend_entries = []
+        seen_names = set()
+        for beyblade in self.beyblades:
+            # Skip clones and fragments
+            if beyblade.is_clone or beyblade.barbie_is_fragment:
+                continue
+            # Skip duplicates (from prestige)
+            base_name = beyblade.name.replace(' (Double)', '')
+            if base_name in seen_names:
+                continue
+            seen_names.add(base_name)
+
+            if beyblade.ability and beyblade.ability in ABILITIES:
+                ability_data = ABILITIES[beyblade.ability]
+                legend_entries.append({
+                    'name': beyblade.name[:15] + '...' if len(beyblade.name) > 15 else beyblade.name,
+                    'ability_name': ability_data['name'],
+                    'description': ability_data['description'],
+                    'color': ability_data['color'],
+                    'alive': beyblade.alive
+                })
+
+        if not legend_entries:
+            return
+
+        # Limit to prevent overflow
+        max_entries = 12
+        legend_entries = legend_entries[:max_entries]
+
+        # Drawing parameters - doubled font sizes for readability
+        font_name = pygame.font.Font(None, 32)
+        font_desc = pygame.font.Font(None, 24)
+        font_title = pygame.font.Font(None, 36)
+        line_height = 55
+        padding = 12
+        box_width = 420
+        box_height = len(legend_entries) * line_height + padding * 2 + 40
+
+        # Position in bottom right
+        box_x = self.window_width - box_width - 10
+        box_y = self.window_height - box_height - 10
+
+        # Draw solid background
+        pygame.draw.rect(self.screen, (20, 20, 30), (box_x, box_y, box_width, box_height))
+
+        # Draw border
+        pygame.draw.rect(self.screen, (100, 100, 100), (box_x, box_y, box_width, box_height), 2)
+
+        # Draw title
+        title = font_title.render("ABILITIES", True, (255, 255, 255))
+        self.screen.blit(title, (box_x + padding, box_y + padding))
+
+        # Draw entries
+        y_offset = box_y + padding + 40
+        for entry in legend_entries:
+            # Dim if dead
+            alpha = 255 if entry['alive'] else 120
+
+            # Ability color indicator
+            pygame.draw.circle(self.screen, entry['color'], (box_x + padding + 8, y_offset + 12), 6)
+
+            # Movie name
+            name_color = (255, 255, 255) if entry['alive'] else (150, 150, 150)
+            name_surface = font_name.render(entry['name'], True, name_color)
+            self.screen.blit(name_surface, (box_x + padding + 22, y_offset))
+
+            # Ability name and description
+            ability_text = f"{entry['ability_name']}: {entry['description'][:35]}..."
+            if len(entry['description']) <= 35:
+                ability_text = f"{entry['ability_name']}: {entry['description']}"
+            desc_color = entry['color'] if entry['alive'] else (100, 100, 100)
+            desc_surface = font_desc.render(ability_text, True, desc_color)
+            self.screen.blit(desc_surface, (box_x + padding + 22, y_offset + 26))
+
+            y_offset += line_height
+
     def _draw_countdown(self):
         """Draw the 3, 2, 1, GO! countdown in the center of the screen."""
         # Determine which number/text to show
@@ -1704,6 +1961,45 @@ class Game:
             # Draw main text
             self.screen.blit(scaled_surface, (x, y))
 
+    def _draw_neo_reset_message(self):
+        """Draw the Neo MATRIX RESET message prominently."""
+        # Create a semi-transparent overlay
+        overlay = pygame.Surface((self.window_width, self.window_height), pygame.SRCALPHA)
+        overlay.fill((0, 50, 0, 150))  # Green tint
+        self.screen.blit(overlay, (0, 0))
+
+        # Create large font
+        font_large = pygame.font.Font(None, 100)
+        font_small = pygame.font.Font(None, 50)
+
+        # Main message
+        main_text = "MATRIX RESET"
+        main_surface = font_large.render(main_text, True, (0, 255, 0))
+        main_x = self.window_width // 2 - main_surface.get_width() // 2
+        main_y = self.window_height // 2 - 60
+
+        # Shadow
+        shadow_surface = font_large.render(main_text, True, (0, 50, 0))
+        self.screen.blit(shadow_surface, (main_x + 4, main_y + 4))
+        self.screen.blit(main_surface, (main_x, main_y))
+
+        # Sub message with movie name
+        sub_text = f"{self.neo_reset_name} died too fast - rewinding time!"
+        sub_surface = font_small.render(sub_text, True, (150, 255, 150))
+        sub_x = self.window_width // 2 - sub_surface.get_width() // 2
+        sub_y = self.window_height // 2 + 40
+        self.screen.blit(sub_surface, (sub_x, sub_y))
+
+        # Add some matrix-style falling characters effect
+        font_matrix = pygame.font.Font(None, 24)
+        for i in range(20):
+            char = random.choice("01アイウエオカキクケコサシスセソタチツテト")
+            char_x = random.randint(0, self.window_width)
+            char_y = random.randint(0, self.window_height)
+            alpha = random.randint(50, 200)
+            char_surface = font_matrix.render(char, True, (0, alpha, 0))
+            self.screen.blit(char_surface, (char_x, char_y))
+
     def draw(self):
         if self.state == STATE_INPUT:
             self.input_screen.draw(self.screen)
@@ -1728,6 +2024,31 @@ class Game:
             # Draw obelisk bumpers
             for bumper in self.obelisk_bumpers:
                 bumper.draw(self.screen)
+
+            # Draw Interstellar black holes
+            for black_hole in self.black_holes:
+                bx, by = int(black_hole['x']), int(black_hole['y'])
+                # Swirling accretion disk effect
+                swirl = (pygame.time.get_ticks() / 50) % (2 * math.pi)
+                # Outer dark glow
+                pygame.draw.circle(self.screen, (10, 5, 20), (bx, by), 35)
+                # Accretion disk rings
+                for ring in range(3):
+                    ring_r = 30 - ring * 8
+                    ring_color = (40 + ring * 20, 20 + ring * 10, 60 + ring * 30)
+                    pygame.draw.circle(self.screen, ring_color, (bx, by), ring_r, 2)
+                # Rotating streaks
+                for j in range(6):
+                    angle = swirl + j * math.pi / 3
+                    sx = bx + math.cos(angle) * 25
+                    sy = by + math.sin(angle) * 25
+                    pygame.draw.line(self.screen, (80, 40, 120), (bx, by), (int(sx), int(sy)), 1)
+                # Event horizon (pure black center)
+                pygame.draw.circle(self.screen, (0, 0, 0), (bx, by), 12)
+                # Bright spot (light warping)
+                bright_x = bx + int(math.cos(swirl * 2) * 6)
+                bright_y = by + int(math.sin(swirl * 2) * 6)
+                pygame.draw.circle(self.screen, (100, 80, 150), (bright_x, bright_y), 3)
 
             # Draw portals
             for i, portal in enumerate(self.portals):
@@ -1952,9 +2273,16 @@ class Game:
                     heat_info = (f"Heat {self.current_heat + 1}/{len(self.heats)}", len(self.heats[self.current_heat]))
             self.battle_hud.draw(self.screen, alive_count, total_count, self.eliminated, survivor_names, self.round_number, heat_info)
 
+            # Draw ability legend in bottom right
+            self._draw_ability_legend()
+
             # Draw countdown overlay
             if self.countdown_active:
                 self._draw_countdown()
+
+            # Draw Neo reset message
+            if self.neo_reset_countdown > 0:
+                self._draw_neo_reset_message()
 
         elif self.state == STATE_HEAT_TRANSITION:
             # Draw the arena state behind transition screen
