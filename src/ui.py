@@ -470,6 +470,8 @@ class HeatTransitionScreen:
         self.heat_number = 0
         self.total_heats = 0
         self.is_to_finals = False
+        self.is_preliminary = False
+        self.is_preliminary_complete = False
         self.animation_timer = 0
 
     def update_layout(self, window_width: int, window_height: int):
@@ -478,11 +480,14 @@ class HeatTransitionScreen:
         center_x = window_width // 2
         self.continue_button.rect = pygame.Rect(center_x - 110, window_height - 100, 220, 50)
 
-    def set_advancers(self, advancers: list, heat_number: int, total_heats: int, is_to_finals: bool = False):
+    def set_advancers(self, advancers: list, heat_number: int, total_heats: int, is_to_finals: bool = False,
+                      is_preliminary: bool = False, is_preliminary_complete: bool = False):
         self.advancers = advancers
         self.heat_number = heat_number
         self.total_heats = total_heats
         self.is_to_finals = is_to_finals
+        self.is_preliminary = is_preliminary
+        self.is_preliminary_complete = is_preliminary_complete
         self.animation_timer = 0
 
     def update(self, mouse_pos: tuple):
@@ -502,7 +507,10 @@ class HeatTransitionScreen:
         center_y = self.window_height // 2
 
         # Title
-        if self.is_to_finals:
+        if self.is_preliminary:
+            title_text = "PRELIMINARY ROUND COMPLETE!"
+            title_color = (255, 215, 0)
+        elif self.is_to_finals:
             title_text = "ADVANCING TO FINALS!"
             title_color = (255, 215, 0)
         else:
@@ -514,7 +522,11 @@ class HeatTransitionScreen:
         screen.blit(title, title_rect)
 
         # Subtitle
-        if not self.is_to_finals:
+        if self.is_preliminary:
+            # Extract movie count from winner name like "Group 2 (55 movies)"
+            winner_name = self.advancers[0] if self.advancers else "Unknown"
+            subtitle_text = f"{winner_name} wins! Their movies advance to the tournament."
+        elif not self.is_to_finals:
             subtitle_text = f"Top {len(self.advancers)} advance to the next round"
         else:
             subtitle_text = f"{len(self.advancers)} contestants will battle in the finals!"

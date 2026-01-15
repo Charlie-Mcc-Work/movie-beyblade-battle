@@ -26,8 +26,8 @@ STAT_RANGES = {
 AVATAR_ABILITIES = ['fireball', 'ice', 'grenade', 'kamehameha', 'water', 'john_wick']
 
 # Physics
-MAX_SPEED = 15
-FRICTION = 0.995
+MAX_SPEED = 15.3  # 2% faster
+FRICTION = 0.9969  # 2% less friction for faster movement
 COLLISION_ELASTICITY = 0.6
 BASE_DAMAGE_MULTIPLIER = 0.5
 KNOCKBACK_FORCE = 1.2

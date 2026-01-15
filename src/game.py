@@ -66,6 +66,12 @@ class Game:
         self.advancers_per_heat = 2  # Top N from each heat advance
         self.max_per_heat = 11  # Max beyblades per heat
 
+        # Preliminary round state (for large tournaments >55 movies)
+        self.preliminary_groups: list[list[str]] = []  # Groups of movies for preliminary battles
+        self.preliminary_winning_movies: list[str] = []  # Movies from the winning group
+        self.is_preliminary = False  # True when running preliminary rounds
+        self.preliminary_max_size = 55  # Max movies per preliminary group
+
         # Persistent movie data (survives across heats)
         self.movie_abilities: dict[str, tuple] = {}  # name -> (ability_key, color)
         self.zombie_used: set[str] = set()  # Track which movies have used zombie (persists across heats)
@@ -123,6 +129,11 @@ class Game:
         self.barry_lyndon_used = set()
         self.oppenheimer_used = set()
 
+        # Transition state
+        self.pending_next_heat = 0
+        self.pending_is_finals = False
+        self.pending_start_main_tournament = False
+
         self.running = True
 
     def start_battle(self, movie_list: list):
@@ -177,19 +188,48 @@ class Game:
         # Shuffle all movies (including prestige duplicates) for random heat placement
         random.shuffle(movie_list)
 
-        # If few movies, just run single battle (no heats needed)
-        if len(movie_list) <= self.max_per_heat:
-            self.heats = [movie_list.copy()]  # Use copy to avoid reference issues
-        else:
-            # Split into heats (slicing creates new lists)
-            self.heats = []
-            for i in range(0, len(movie_list), self.max_per_heat):
-                heat = movie_list[i:i + self.max_per_heat]
-                if heat:
-                    self.heats.append(heat)
+        # Check if we need a preliminary round (>55 movies)
+        if len(movie_list) > self.preliminary_max_size:
+            # Split movies into groups of max 55
+            self.preliminary_groups = []
+            for i in range(0, len(movie_list), self.preliminary_max_size):
+                group = movie_list[i:i + self.preliminary_max_size]
+                if group:
+                    self.preliminary_groups.append(group)
 
-        # Start first heat
-        self._start_heat(0)
+            self.is_preliminary = True
+
+            # Create group names for the preliminary battle
+            group_names = [f"Group {i+1} ({len(g)} movies)" for i, g in enumerate(self.preliminary_groups)]
+
+            # Assign abilities to the group beyblades
+            for i, group_name in enumerate(group_names):
+                ability_key = ability_pool[pool_index % len(ability_pool)]
+                pool_index += 1
+                color = BEYBLADE_COLORS[i % len(BEYBLADE_COLORS)]
+                self.movie_abilities[group_name] = (ability_key, color)
+
+            # Set up the preliminary battle with group beyblades
+            self.heats = [group_names]
+            self._start_heat(0)
+        else:
+            # Normal tournament flow
+            self.is_preliminary = False
+            self.preliminary_groups.clear()
+
+            # If few movies, just run single battle (no heats needed)
+            if len(movie_list) <= self.max_per_heat:
+                self.heats = [movie_list.copy()]  # Use copy to avoid reference issues
+            else:
+                # Split into heats (slicing creates new lists)
+                self.heats = []
+                for i in range(0, len(movie_list), self.max_per_heat):
+                    heat = movie_list[i:i + self.max_per_heat]
+                    if heat:
+                        self.heats.append(heat)
+
+            # Start first heat
+            self._start_heat(0)
 
         self.state = STATE_BATTLE
         self.speed_multiplier = 1
@@ -224,8 +264,8 @@ class Game:
         else:
             movies = self.heats[heat_index]
 
-        # Use rectangle finals arena for the deciding battle
-        is_final_battle = self.is_finals or len(self.heats) == 1
+        # Use rectangle finals arena for the deciding battle (not for preliminary rounds)
+        is_final_battle = (self.is_finals or len(self.heats) == 1) and not self.is_preliminary
         self.arena.set_finals_mode(is_final_battle)
 
         self._spawn_beyblades(movies)
@@ -1775,6 +1815,39 @@ class Game:
         """Handle end of a heat - advance winners or end tournament."""
         survivor_names = [b.name for b in survivors]
 
+        # Handle preliminary round ending
+        if self.is_preliminary:
+            # Determine winner - either last survivor or last eliminated
+            if survivor_names:
+                winner_name = survivor_names[0]
+            elif self.all_eliminated:
+                winner_name = self.all_eliminated[-1]
+            else:
+                winner_name = "Group 1"  # Fallback
+
+            # Extract group index from winner name (e.g., "Group 2 (55 movies)" -> index 1)
+            try:
+                group_num = int(winner_name.split()[1])
+                winning_group_index = group_num - 1
+            except (IndexError, ValueError):
+                winning_group_index = 0
+
+            # Store the winning group's movies
+            self.preliminary_winning_movies = self.preliminary_groups[winning_group_index].copy()
+
+            # Show transition screen
+            self.heat_transition_screen.set_advancers(
+                [winner_name],
+                1,
+                len(self.preliminary_groups),
+                is_to_finals=False,
+                is_preliminary=True,
+                is_preliminary_complete=True
+            )
+            self.pending_start_main_tournament = True
+            self.state = STATE_HEAT_TRANSITION
+            return
+
         if self.is_finals or len(self.heats) == 1:
             # Tournament over - we have a winner
             if survivor_names:
@@ -1819,10 +1892,45 @@ class Game:
 
     def _continue_after_heat(self):
         """Continue to the next heat or finals after transition screen."""
+        self.eliminated.clear()  # Clear heat eliminations for next heat
+
+        # Handle preliminary round completion - start main tournament with winning group's movies
+        if self.pending_start_main_tournament:
+            self.pending_start_main_tournament = False
+            self.is_preliminary = False
+            self._start_main_tournament_with_movies(self.preliminary_winning_movies)
+            return
+
+        # Normal tournament flow
         if self.pending_is_finals:
             self.is_finals = True
-        self.eliminated.clear()  # Clear heat eliminations for next heat
         self._start_heat(self.pending_next_heat)
+        self.state = STATE_BATTLE
+
+    def _start_main_tournament_with_movies(self, movie_list: list):
+        """Start the main tournament using the winning group's movies."""
+        # Reset tournament state for main tournament
+        self.eliminated.clear()
+        self.all_eliminated.clear()
+        self.heat_winners.clear()
+        self.current_heat = 0
+        self.is_finals = False
+
+        movie_list = movie_list.copy()
+        random.shuffle(movie_list)
+
+        # Set up heats for the main tournament
+        if len(movie_list) <= self.max_per_heat:
+            self.heats = [movie_list]
+        else:
+            self.heats = []
+            for i in range(0, len(movie_list), self.max_per_heat):
+                heat = movie_list[i:i + self.max_per_heat]
+                if heat:
+                    self.heats.append(heat)
+
+        # Start first heat of main tournament
+        self._start_heat(0)
         self.state = STATE_BATTLE
 
     def _draw_ability_legend(self):
@@ -2266,7 +2374,9 @@ class Game:
             total_count = len(self.beyblades)
             survivor_names = [b.name for b in alive_beyblades]
             heat_info = None
-            if len(self.heats) > 1:
+            if self.is_preliminary:
+                heat_info = (f"PRELIMINARY ({len(self.preliminary_groups)} groups)", len(self.preliminary_groups))
+            elif len(self.heats) > 1:
                 if self.is_finals:
                     heat_info = ("FINALS", len(self.heat_winners))
                 else:
