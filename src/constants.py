@@ -31,7 +31,7 @@ FRICTION = 0.9975  # Less friction for more sustained speed
 COLLISION_ELASTICITY = 0.6
 BASE_DAMAGE_MULTIPLIER = 0.5
 KNOCKBACK_FORCE = 1.2
-ARENA_SLOPE_STRENGTH = 0.20  # Bowl slope - creates orbital motion
+ARENA_SLOPE_STRENGTH = 0.28  # Bowl slope - creates orbital motion
 
 # Colors
 BLACK = (0, 0, 0)

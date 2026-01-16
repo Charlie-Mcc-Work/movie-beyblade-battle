@@ -199,9 +199,6 @@ class Game:
                 color = BEYBLADE_COLORS[len(self.movie_abilities) % len(BEYBLADE_COLORS)]
                 self.movie_abilities[movie] = (ability_key, color)
 
-        # Save original movie count BEFORE prestige duplicates for accurate group display
-        original_movie_count = len(movie_list)
-
         # Add prestige duplicates to movie list
         for movie in prestige_movies:
             movie_list.append(f"{movie} (Double)")
@@ -209,20 +206,9 @@ class Game:
         # Shuffle all movies (including prestige duplicates) for random heat placement
         random.shuffle(movie_list)
 
-        # Check if we need a preliminary round (>55 movies) - use ORIGINAL count for group sizing
-        if original_movie_count > self.preliminary_max_size:
-            # Calculate how many groups we need based on original count
-            num_groups = (original_movie_count + self.preliminary_max_size - 1) // self.preliminary_max_size
-
-            # Calculate original group sizes (what we display to user)
-            original_group_sizes = []
-            remaining = original_movie_count
-            for _ in range(num_groups):
-                size = min(remaining, self.preliminary_max_size)
-                original_group_sizes.append(size)
-                remaining -= size
-
-            # Split actual movies (with prestige duplicates) into groups
+        # Check if we need a preliminary round (>55 movies)
+        if len(movie_list) > self.preliminary_max_size:
+            # Split movies into groups of max 55
             self.preliminary_groups = []
             for i in range(0, len(movie_list), self.preliminary_max_size):
                 group = movie_list[i:i + self.preliminary_max_size]
@@ -231,8 +217,8 @@ class Game:
 
             self.is_preliminary = True
 
-            # Create group names using ORIGINAL movie counts (before prestige duplicates)
-            group_names = [f"Group {i+1} ({original_group_sizes[i]} movies)" for i in range(len(self.preliminary_groups))]
+            # Create group names showing actual movie count in each group
+            group_names = [f"Group {i+1} ({len(g)} movies)" for i, g in enumerate(self.preliminary_groups)]
 
             # Assign abilities to the group beyblades
             for i, group_name in enumerate(group_names):
