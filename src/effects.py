@@ -91,6 +91,11 @@ class SoundManager:
         self.sounds['countdown_go'] = self._make_countdown_go()
         # Bumper hit - pinball-style ding
         self.sounds['bumper'] = self._make_sound(freq=800, duration=0.08, freq_end=1200, volume=0.35)
+        # Docket wheel sounds
+        self.sounds['wheel_spin'] = self._make_wheel_spin_sound()
+        self.sounds['wheel_tick'] = self._make_sound(freq=1200, duration=0.03, freq_end=800, volume=0.15)
+        self.sounds['wheel_stop'] = self._make_wheel_stop_sound()
+        self.sounds['wheel_upgrade'] = self._make_wheel_upgrade_sound()
 
     def _make_sound(self, freq=440, duration=0.1, freq_end=None, volume=0.3):
         """Generate a simple synthesized sound."""
@@ -156,6 +161,67 @@ class SoundManager:
 
         return pygame.mixer.Sound(buffer=buf)
 
+    def _make_wheel_spin_sound(self):
+        """Generate a wheel starting to spin sound - whoosh."""
+        sample_rate = 22050
+        duration = 0.3
+        n_samples = int(sample_rate * duration)
+        buf = array.array('h', [0] * n_samples)
+
+        for i in range(n_samples):
+            t = i / sample_rate
+            progress = i / n_samples
+            # Rising whoosh - noise filtered through rising frequency
+            freq = 200 + 400 * progress
+            envelope = min(1.0, progress * 3) * min(1.0, (1 - progress) * 2)
+            # Mix sine with some noise for whoosh effect
+            noise = random.uniform(-0.3, 0.3)
+            value = int(32767 * 0.25 * envelope * (math.sin(2 * math.pi * freq * t) * 0.7 + noise * 0.3))
+            buf[i] = max(-32767, min(32767, value))
+
+        return pygame.mixer.Sound(buffer=buf)
+
+    def _make_wheel_stop_sound(self):
+        """Generate wheel landing sound - satisfying ding."""
+        sample_rate = 22050
+        duration = 0.4
+        n_samples = int(sample_rate * duration)
+        buf = array.array('h', [0] * n_samples)
+
+        # Two-tone chime
+        freqs = [(880, 0.35), (1100, 0.25)]  # A5 and roughly C#6
+        for freq, vol in freqs:
+            for i in range(n_samples):
+                t = i / sample_rate
+                progress = i / n_samples
+                envelope = min(1.0, (1 - progress) * 3) * min(1.0, i / (sample_rate * 0.005))
+                value = int(32767 * vol * envelope * math.sin(2 * math.pi * freq * t))
+                buf[i] = max(-32767, min(32767, buf[i] + value))
+
+        return pygame.mixer.Sound(buffer=buf)
+
+    def _make_wheel_upgrade_sound(self):
+        """Generate upgrade sliver hit sound - exciting ascending sparkle."""
+        sample_rate = 22050
+        duration = 0.5
+        n_samples = int(sample_rate * duration)
+        buf = array.array('h', [0] * n_samples)
+
+        # Rapid ascending arpeggio
+        notes = [(523, 0.0, 0.12), (659, 0.08, 0.12), (784, 0.16, 0.12),
+                 (1047, 0.24, 0.15), (1319, 0.32, 0.18)]
+        for note_freq, start_time, note_dur in notes:
+            start_sample = int(start_time * sample_rate)
+            end_sample = int((start_time + note_dur) * sample_rate)
+            for i in range(start_sample, min(end_sample, n_samples)):
+                t = (i - start_sample) / sample_rate
+                progress = (i - start_sample) / (end_sample - start_sample)
+                envelope = min(1.0, (1 - progress) * 3) * min(1.0, (i - start_sample) / (sample_rate * 0.005))
+                value = int(32767 * 0.25 * envelope * math.sin(2 * math.pi * note_freq * t))
+                buf[i] = max(-32767, min(32767, buf[i] + value))
+
+        return pygame.mixer.Sound(buffer=buf)
+
     def play(self, sound_name: str):
         """Play a sound if not muted."""
         if not self.muted and sound_name in self.sounds:
@@ -170,6 +236,7 @@ class EffectsManager:
     def __init__(self):
         self.particles: list[Particle] = []
         self.knockout_effects: list[dict] = []
+        self.nuke_blasts: list[dict] = []  # Oppenheimer nuke explosions
         self.event_log: list[dict] = []  # Scrolling log on the side
         self.max_log_entries = 30  # Entries persist until heat ends
         self.sound = SoundManager()
@@ -238,6 +305,41 @@ class EffectsManager:
         # Play sound
         self.sound.play(sound_name)
 
+    def spawn_nuke_blast(self, center_x: float, center_y: float, nuke_left: bool, arena_radius: float):
+        """Spawn a massive nuke explosion effect for Oppenheimer."""
+        self.nuke_blasts.append({
+            'center_x': center_x,
+            'center_y': center_y,
+            'nuke_left': nuke_left,
+            'timer': 90,  # 1.5 seconds
+            'max_timer': 90,
+            'arena_radius': arena_radius,
+        })
+
+        # Spawn tons of particles in the nuked area
+        for _ in range(100):
+            if nuke_left:
+                x = center_x - random.uniform(0, arena_radius)
+            else:
+                x = center_x + random.uniform(0, arena_radius)
+            y = center_y + random.uniform(-arena_radius, arena_radius)
+
+            angle = random.uniform(0, 2 * math.pi)
+            speed = random.uniform(2, 8)
+            vx = math.cos(angle) * speed
+            vy = math.sin(angle) * speed
+
+            # Fire colors
+            color = random.choice([
+                (255, 255, 200),
+                (255, 200, 100),
+                (255, 150, 50),
+                (255, 100, 0),
+                (255, 50, 0),
+            ])
+            lifetime = random.randint(30, 60)
+            self.particles.append(Particle(x, y, vx, vy, color, lifetime))
+
     def add_log_entry(self, text: str, color: tuple = None, sound_name: str = None):
         """Add a generic log entry."""
         if color is None:
@@ -272,11 +374,72 @@ class EffectsManager:
         # Remove expired effects
         self.knockout_effects = [e for e in self.knockout_effects if e['timer'] > 0]
 
+        # Update nuke blasts
+        for blast in self.nuke_blasts:
+            blast['timer'] -= dt
+
+        self.nuke_blasts = [b for b in self.nuke_blasts if b['timer'] > 0]
+
         # Age log entries
         for entry in self.event_log:
             entry['age'] += dt
 
     def draw(self, screen: pygame.Surface, font: pygame.font.Font):
+        # Draw nuke blasts (behind everything else)
+        for blast in self.nuke_blasts:
+            progress = 1.0 - (blast['timer'] / blast['max_timer'])
+            cx, cy = blast['center_x'], blast['center_y']
+            r = blast['arena_radius']
+
+            # Flash effect - bright at start, fades out
+            if progress < 0.2:
+                # Initial bright flash
+                flash_alpha = int(200 * (1 - progress / 0.2))
+                flash_surface = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
+                flash_surface.fill((255, 255, 200, flash_alpha))
+                screen.blit(flash_surface, (0, 0))
+
+            # Expanding blast wave
+            wave_radius = int(r * 1.5 * progress)
+            if wave_radius > 0:
+                wave_alpha = int(150 * (1 - progress))
+                wave_surface = pygame.Surface((wave_radius * 2, wave_radius * 2), pygame.SRCALPHA)
+
+                # Draw concentric rings
+                for i in range(3):
+                    ring_r = max(1, wave_radius - i * 20)
+                    ring_alpha = max(0, wave_alpha - i * 30)
+                    color = (255, 150 - i * 40, 50 - i * 20, ring_alpha)
+                    pygame.draw.circle(wave_surface, color, (wave_radius, wave_radius), ring_r, 8)
+
+                # Position blast on correct side
+                if blast['nuke_left']:
+                    blast_x = int(cx - r * 0.5)
+                else:
+                    blast_x = int(cx + r * 0.5)
+
+                screen.blit(wave_surface, (blast_x - wave_radius, int(cy) - wave_radius))
+
+            # Mushroom cloud effect (rising)
+            if progress > 0.1:
+                cloud_y = cy - int(100 * (progress - 0.1))
+                cloud_alpha = int(180 * (1 - progress))
+                cloud_radius = int(60 + 40 * progress)
+
+                if blast['nuke_left']:
+                    cloud_x = int(cx - r * 0.3)
+                else:
+                    cloud_x = int(cx + r * 0.3)
+
+                # Cloud layers
+                for i in range(3):
+                    layer_r = cloud_radius - i * 15
+                    if layer_r > 0:
+                        layer_color = (255, 200 - i * 50, 100 - i * 30, max(0, cloud_alpha - i * 40))
+                        cloud_surface = pygame.Surface((layer_r * 2, layer_r * 2), pygame.SRCALPHA)
+                        pygame.draw.circle(cloud_surface, layer_color, (layer_r, layer_r), layer_r)
+                        screen.blit(cloud_surface, (cloud_x - layer_r, cloud_y - layer_r - i * 20))
+
         # Draw all particles
         for particle in self.particles:
             particle.draw(screen)
@@ -329,4 +492,5 @@ class EffectsManager:
     def clear(self):
         self.particles.clear()
         self.knockout_effects.clear()
+        self.nuke_blasts.clear()
         self.event_log.clear()

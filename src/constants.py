@@ -26,8 +26,8 @@ STAT_RANGES = {
 AVATAR_ABILITIES = ['fireball', 'ice', 'grenade', 'kamehameha', 'water', 'john_wick']
 
 # Physics
-MAX_SPEED = 15.3  # 2% faster
-FRICTION = 0.9969  # 2% less friction for faster movement
+MAX_SPEED = 18.0  # Faster beyblades
+FRICTION = 0.9975  # Less friction for more sustained speed
 COLLISION_ELASTICITY = 0.6
 BASE_DAMAGE_MULTIPLIER = 0.5
 KNOCKBACK_FORCE = 1.2
@@ -57,6 +57,57 @@ UI_TEXT_DIM = (150, 150, 160)
 # Victory colors
 VICTORY_GOLD = (255, 215, 0)
 VICTORY_GLOW = (255, 235, 100)
+
+# Docket colors
+DOCKET_GOLDEN = (255, 200, 50)
+DOCKET_GOLDEN_DARK = (180, 140, 30)
+DOCKET_DIAMOND = (100, 200, 255)
+DOCKET_DIAMOND_DARK = (60, 140, 200)
+DOCKET_SHIT = (139, 90, 43)
+DOCKET_SHIT_DARK = (90, 60, 30)
+DOCKET_UPGRADE_SLIVER = (255, 100, 255)  # Bright pink for upgrade slivers
+
+# Themed segment colors for each docket tier
+GOLDEN_SEGMENT_COLORS = [
+    (255, 100, 80),   # Warm red
+    (255, 150, 50),   # Orange
+    (255, 200, 60),   # Gold
+    (255, 230, 100),  # Light gold
+    (220, 80, 60),    # Deep red
+    (255, 180, 80),   # Peachy orange
+    (240, 160, 50),   # Amber
+    (255, 120, 90),   # Coral
+]
+
+DIAMOND_SEGMENT_COLORS = [
+    (100, 180, 255),  # Sky blue
+    (150, 100, 255),  # Purple
+    (80, 220, 255),   # Cyan
+    (180, 150, 255),  # Lavender
+    (100, 255, 220),  # Aqua
+    (120, 140, 255),  # Periwinkle
+    (200, 180, 255),  # Light purple
+    (80, 200, 240),   # Teal
+]
+
+SHIT_SEGMENT_COLORS = [
+    (120, 90, 60),    # Brown
+    (100, 100, 90),   # Grey-brown
+    (90, 70, 50),     # Dark brown
+    (130, 110, 80),   # Tan
+    (80, 80, 70),     # Dark grey
+    (110, 85, 55),    # Mud
+    (95, 90, 75),     # Olive grey
+    (105, 75, 50),    # Rusty brown
+]
+
+# Docket wheel physics
+DOCKET_SPIN_MIN = 12.0   # Min initial angular velocity (rad/s)
+DOCKET_SPIN_MAX = 20.0   # Max initial angular velocity (rad/s)
+DOCKET_FRICTION = 0.985  # Per-frame velocity multiplier
+DOCKET_FLAP_DRAG = 0.015 # Extra slowdown per peg hit
+DOCKET_STOP_THRESHOLD = 0.08  # Velocity below this = stopped
+DOCKET_PEG_COUNT = 20    # Number of pegs around wheel edge
 
 # Beyblade color palette (will cycle through these)
 BEYBLADE_COLORS = [
@@ -110,11 +161,20 @@ STATE_BATTLE = 'battle'
 STATE_HEAT_TRANSITION = 'heat_transition'
 STATE_VICTORY = 'victory'
 STATE_LEADERBOARD = 'leaderboard'
+STATE_DOCKET_SELECT = 'docket_select'
+STATE_DOCKET_SPIN = 'docket_spin'
+STATE_DOCKET_RESULT = 'docket_result'
+STATE_DOCKET_ZOOM = 'docket_zoom'
 
 # File loading
 MOVIE_LIST_FILE = "movies.txt"
 QUEUE_FILE = "queue.txt"
 WATCHED_FILE = "watched.txt"
+GOLDEN_DOCKET_FILE = "goldendocket.txt"
+DIAMOND_DOCKET_FILE = "diamonddocket.txt"
+SHIT_DOCKET_FILE = "shitdocket.txt"
+PERMANENT_PEOPLE_FILE = "permenantpeople.txt"
+PEOPLE_COUNTER_FILE = "peoplecounter.txt"
 
 # Avatar settings
 AVATAR_DISTANCE_FROM_ARENA = 60  # Pixels outside arena edge

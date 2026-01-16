@@ -4,7 +4,9 @@ from .constants import (
     WINDOW_WIDTH, WINDOW_HEIGHT, FONT_SIZES,
     UI_BG, UI_PANEL, UI_ACCENT, UI_ACCENT_HOVER, UI_TEXT, UI_TEXT_DIM,
     VICTORY_GOLD, VICTORY_GLOW, WHITE, BLACK, SPEED_OPTIONS,
-    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE
+    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE,
+    DOCKET_GOLDEN, DOCKET_GOLDEN_DARK, DOCKET_DIAMOND, DOCKET_DIAMOND_DARK,
+    DOCKET_SHIT, DOCKET_SHIT_DARK
 )
 
 
@@ -74,19 +76,22 @@ class TextBox:
             self.cursor_timer = 0
             self.cursor_visible = not self.cursor_visible
 
-    def draw(self, screen: pygame.Surface):
-        # Background
-        pygame.draw.rect(screen, UI_PANEL, self.rect, border_radius=4)
+    def draw(self, screen: pygame.Surface, bg_color=None, text_color=None):
+        # Background - use custom or default
+        bg = bg_color if bg_color else UI_PANEL
+        txt = text_color if text_color else UI_TEXT
+        pygame.draw.rect(screen, bg, self.rect, border_radius=4)
         border_color = UI_ACCENT if self.active else UI_TEXT_DIM
         pygame.draw.rect(screen, border_color, self.rect, 2, border_radius=4)
 
-        # Text area with padding
-        text_area = self.rect.inflate(-20, -20)
+        # Text area with padding (use smaller padding for short boxes)
+        padding = min(10, self.rect.height // 4)
+        text_area = self.rect.inflate(-padding * 2, -padding * 2)
         lines = self.text.split('\n')
 
         # Calculate visible lines
         line_height = self.font.get_linesize()
-        max_visible_lines = text_area.height // line_height
+        max_visible_lines = max(1, text_area.height // line_height)
 
         # Auto-scroll to show latest lines
         if len(lines) > max_visible_lines:
@@ -99,7 +104,7 @@ class TextBox:
         for i, line in enumerate(lines[self.scroll_offset:]):
             if y + line_height > text_area.bottom:
                 break
-            text_surface = self.font.render(line[:80], True, UI_TEXT)  # Truncate long lines
+            text_surface = self.font.render(line[:80], True, txt)  # Truncate long lines
             screen.blit(text_surface, (text_area.left, y))
             y += line_height
 
@@ -109,7 +114,7 @@ class TextBox:
             cursor_y = min(text_area.top + (len(lines) - self.scroll_offset - 1) * line_height,
                           text_area.bottom - line_height)
             if cursor_y >= text_area.top:
-                pygame.draw.line(screen, UI_TEXT, (cursor_x, cursor_y),
+                pygame.draw.line(screen, txt, (cursor_x, cursor_y),
                                (cursor_x, cursor_y + line_height), 2)
 
     def get_entries(self) -> list:
@@ -140,6 +145,10 @@ class InputScreen:
             self.text_box.load_from_file(MOVIE_LIST_FILE)
         self.battle_button = Button(center_x - 100, 630, 200, 50, "BATTLE!", fonts['medium'])
 
+        # Golden Docket button (bottom left)
+        self.docket_button = Button(20, WINDOW_HEIGHT - 70, 180, 50, "GOLDEN DOCKET", fonts['small'],
+                                    color=DOCKET_GOLDEN_DARK, hover_color=DOCKET_GOLDEN)
+
         self.error_message = ""
         self.error_timer = 0
 
@@ -163,6 +172,9 @@ class InputScreen:
         button_y = min(630, window_height - 170)
         self.battle_button.rect = pygame.Rect(center_x - 100, button_y, 200, 50)
 
+        # Reposition docket button (bottom left)
+        self.docket_button.rect = pygame.Rect(20, window_height - 70, 180, 50)
+
     def handle_event(self, event: pygame.event.Event):
         self.text_box.handle_event(event)
 
@@ -170,6 +182,7 @@ class InputScreen:
         """Returns (should_start, movie_list)"""
         self.text_box.update()
         self.battle_button.update(mouse_pos)
+        self.docket_button.update(mouse_pos)
 
         entries = self.text_box.get_entries()
         self.battle_button.enabled = len(entries) >= 2
@@ -178,6 +191,10 @@ class InputScreen:
             self.error_timer -= 1
 
         return (False, [])
+
+    def check_docket(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        """Check if docket button was clicked."""
+        return self.docket_button.is_clicked(mouse_pos, mouse_clicked)
 
     def check_start(self, mouse_pos: tuple, mouse_clicked: bool) -> tuple:
         """Check if battle should start. Returns (should_start, movie_list)"""
@@ -262,13 +279,16 @@ class InputScreen:
             screen.blit(text, rect)
             y += 20
 
+        # Golden Docket button (bottom left)
+        self.docket_button.draw(screen)
+
         # Queue panel on the right side
         if self.queue_items:
-            panel_width = 250
+            panel_width = 300
             panel_x = self.window_width - panel_width - 20
             panel_y = 150
-            line_height = 28
-            max_items = min(10, len(self.queue_items))
+            line_height = 36
+            max_items = min(8, len(self.queue_items))
             panel_height = max_items * line_height + 60
 
             # Panel background
@@ -289,7 +309,7 @@ class InputScreen:
             self.queue_rects = []
             item_y = panel_y + 55
             for i, item in enumerate(self.queue_items[:max_items]):
-                display_name = item if len(item) <= 25 else item[:22] + "..."
+                display_name = item if len(item) <= 22 else item[:19] + "..."
 
                 # Clickable area
                 item_rect = pygame.Rect(panel_x + 5, item_y, panel_width - 10, line_height - 2)
@@ -300,8 +320,8 @@ class InputScreen:
                 if item_rect.collidepoint(mouse_pos):
                     pygame.draw.rect(screen, (80, 60, 50), item_rect, border_radius=4)
 
-                # Item text
-                item_text = self.fonts['small'].render(f"  {display_name}", True, (255, 200, 150))
+                # Item text (medium font for better visibility)
+                item_text = self.fonts['medium'].render(f"  {display_name}", True, (255, 200, 150))
                 screen.blit(item_text, (panel_x + 10, item_y + 4))
 
                 item_y += line_height
@@ -760,6 +780,648 @@ class LeaderboardScreen:
 
         queue_label = self.fonts['tiny'].render("Add to queue, replay", True, UI_TEXT_DIM)
         screen.blit(queue_label, (self.queue_button.rect.centerx - queue_label.get_width() // 2, self.queue_button.rect.bottom + 5))
+
+
+class ParticipantSelectScreen:
+    """Screen to select which participants are present for the docket."""
+    def __init__(self, fonts: dict, permanent_people: list, people_counter: dict, docket_data: dict):
+        """
+        permanent_people: list of names from permanentpeople.txt
+        people_counter: dict of {name: count} from peoplecounter.txt
+        docket_data: dict with 'golden', 'diamond', 'shit' keys containing {name: movie}
+        """
+        self.fonts = fonts
+        self.window_width = WINDOW_WIDTH
+        self.window_height = WINDOW_HEIGHT
+
+        # Categorize people
+        self.permanent_people = permanent_people  # From file (truly permanent)
+        self.people_counter = people_counter.copy()  # {name: count}
+        self.docket_data = docket_data
+
+        # All people from counter go in recurring section
+        # Sort so people with docket entries (starred) come first
+        all_recurring = list(people_counter.keys())
+        self.starred_people = set(name for name in all_recurring
+                                   if name in docket_data.get('golden', {}))
+        self.recurring_people = sorted(all_recurring,
+                                       key=lambda n: (0 if n in self.starred_people else 1, n))
+
+        # No more graduated_people - everyone from counter stays in recurring
+        self.graduated_people = []
+
+        # All permanent participants (only from permanentpeople.txt)
+        self.all_permanent = permanent_people
+
+        # Selection state - permanent checked by default, recurring NOT checked
+        self.selected_permanent = {name: True for name in self.all_permanent}
+        self.selected_recurring = {name: False for name in self.recurring_people}
+
+        # Track people added via text box this session (so we don't double-count them)
+        self.newly_added = []
+
+        # New name input (taller for better text visibility)
+        self.new_name_input = TextBox(0, 0, 220, 50, fonts['small'])
+        self.new_name_input.active = False
+
+        # Docket pick inputs for people reaching 5 (shown when needed)
+        self.pending_graduation = []  # Names that will reach 5 this round
+        self.graduation_inputs = {}  # {name: {'golden': TextBox, 'diamond': TextBox, 'shit': TextBox}}
+
+        center_x = WINDOW_WIDTH // 2
+        self.start_button = Button(center_x - 140, 550, 280, 50, "START GOLDEN DOCKET", fonts['small'],
+                                   color=DOCKET_GOLDEN_DARK, hover_color=DOCKET_GOLDEN)
+
+        self.scroll_offset = 0
+        self._build_layout()
+
+    def _build_layout(self):
+        """Build clickable areas for all sections."""
+        self.permanent_rects = []
+        self.recurring_rects = []
+
+        center_x = self.window_width // 2
+        left_x = 50  # Left column for permanent
+        middle_x = center_x - 100  # Middle column for new entry
+        right_x = center_x + 150  # Right column for recurring
+
+        # Permanent people checkboxes (left side)
+        y = 180
+        for name in self.all_permanent:
+            rect = pygame.Rect(left_x, y, 280, 35)
+            self.permanent_rects.append((name, rect))
+            y += 38
+
+        # Recurring people checkboxes (right side)
+        y = 180
+        for name in self.recurring_people:
+            count = self.people_counter.get(name, 0)
+            rect = pygame.Rect(right_x, y, 280, 35)
+            self.recurring_rects.append((name, rect, count))
+            y += 38
+
+        # New name input position (middle column, fixed position)
+        self.new_name_input.rect = pygame.Rect(middle_x, 180, 220, 50)
+
+        # Update button positions
+        self.start_button.rect = pygame.Rect(center_x - 140, self.window_height - 100, 280, 50)
+
+    def update_layout(self, window_width: int, window_height: int):
+        self.window_width = window_width
+        self.window_height = window_height
+        self._build_layout()
+
+    def update(self, mouse_pos: tuple):
+        self.start_button.update(mouse_pos)
+        self.new_name_input.update()
+
+        # Update graduation inputs
+        for name, inputs in self.graduation_inputs.items():
+            for textbox in inputs.values():
+                textbox.update()
+
+        # Enable start button if at least one selected AND all graduation inputs filled
+        has_selection = any(self.selected_permanent.values()) or any(self.selected_recurring.values())
+        graduation_complete = self._check_graduation_inputs_complete()
+        self.start_button.enabled = has_selection and graduation_complete
+
+        # Check for pending graduations
+        self._update_pending_graduations()
+
+    def _update_pending_graduations(self):
+        """Check which recurring people will graduate to 5 and need inputs."""
+        new_pending = []
+        for name in self.recurring_people:
+            if self.selected_recurring.get(name, False):
+                current_count = self.people_counter.get(name, 0)
+                # Will reach 5 after increment AND doesn't have docket entries
+                if current_count == 4 and name not in self.docket_data.get('golden', {}):
+                    new_pending.append(name)
+
+        # Create inputs for newly pending people
+        for name in new_pending:
+            if name not in self.graduation_inputs:
+                self._create_graduation_inputs(name)
+
+        # Remove inputs for people no longer pending
+        for name in list(self.graduation_inputs.keys()):
+            if name not in new_pending:
+                del self.graduation_inputs[name]
+
+        self.pending_graduation = new_pending
+
+    def _create_graduation_inputs(self, name: str):
+        """Create text inputs for a person graduating to permanent status."""
+        # Position below their checkbox
+        base_y = 0
+        for n, rect, count in self.recurring_rects:
+            if n == name:
+                base_y = rect.bottom + 5
+                break
+
+        right_x = self.window_width // 2 + 150
+        self.graduation_inputs[name] = {
+            'golden': TextBox(right_x, base_y, 250, 45, self.fonts['small']),
+            'diamond': TextBox(right_x, base_y + 50, 250, 45, self.fonts['small']),
+            'shit': TextBox(right_x, base_y + 100, 250, 45, self.fonts['small']),
+        }
+
+    def _check_graduation_inputs_complete(self) -> bool:
+        """Check if all graduation inputs are filled."""
+        for name, inputs in self.graduation_inputs.items():
+            for textbox in inputs.values():
+                if not textbox.text.strip():
+                    return False
+        return True
+
+    def handle_event(self, event):
+        """Handle text input events."""
+        # Handle new name input
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN and self.new_name_input.active:
+            new_name = self.new_name_input.text.strip()
+            if new_name and new_name not in self.people_counter and new_name not in self.all_permanent:
+                self._add_new_person(new_name)
+                self.new_name_input.text = ""
+            return
+
+        self.new_name_input.handle_event(event)
+
+        # Handle graduation inputs
+        for inputs in self.graduation_inputs.values():
+            for textbox in inputs.values():
+                textbox.handle_event(event)
+
+    def _add_new_person(self, name: str):
+        """Add a new person to the recurring list."""
+        self.people_counter[name] = 1
+        self.recurring_people.append(name)
+        self.selected_recurring[name] = False  # Not auto-selected
+        self.newly_added.append(name)  # Track as newly added this session
+        self._build_layout()
+
+    def handle_click(self, mouse_pos: tuple, mouse_clicked: bool):
+        """Handle checkbox clicks."""
+        if not mouse_clicked:
+            return
+
+        # Permanent people checkboxes
+        for name, rect in self.permanent_rects:
+            if rect.collidepoint(mouse_pos):
+                self.selected_permanent[name] = not self.selected_permanent.get(name, False)
+                return
+
+        # Recurring people checkboxes
+        for name, rect, count in self.recurring_rects:
+            if rect.collidepoint(mouse_pos):
+                self.selected_recurring[name] = not self.selected_recurring.get(name, False)
+                return
+
+    def check_start(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        return self.start_button.is_clicked(mouse_pos, mouse_clicked)
+
+    def get_selected_participants(self) -> list:
+        """Return list of all selected participant names."""
+        selected = []
+        for name, is_selected in self.selected_permanent.items():
+            if is_selected:
+                selected.append(name)
+        for name, is_selected in self.selected_recurring.items():
+            if is_selected and name not in selected:
+                selected.append(name)
+        return selected
+
+    def get_graduation_picks(self) -> dict:
+        """Return docket picks for graduating people: {name: {'golden': movie, 'diamond': movie, 'shit': movie}}"""
+        picks = {}
+        for name, inputs in self.graduation_inputs.items():
+            picks[name] = {
+                'golden': inputs['golden'].text.strip(),
+                'diamond': inputs['diamond'].text.strip(),
+                'shit': inputs['shit'].text.strip(),
+            }
+        return picks
+
+    def get_counter_updates(self) -> tuple:
+        """Return (increments, decrements, newly_added) - lists of names."""
+        increments = []
+        decrements = []
+
+        # Handle all recurring people (including starred ones)
+        for name in self.recurring_people:
+            # Skip newly added people - their count of 1 already represents this visit
+            if name in self.newly_added:
+                continue
+            if self.selected_recurring.get(name, False):
+                increments.append(name)
+            else:
+                decrements.append(name)
+
+        return increments, decrements, self.newly_added
+
+    def draw(self, screen: pygame.Surface):
+        screen.fill(UI_BG)
+
+        center_x = self.window_width // 2
+
+        # Title
+        title = self.fonts['title'].render("GOLDEN DOCKET", True, DOCKET_GOLDEN)
+        title_rect = title.get_rect(center=(center_x, 40))
+        screen.blit(title, title_rect)
+
+        # Subtitle
+        subtitle = self.fonts['medium'].render("Who's here tonight?", True, UI_TEXT_DIM)
+        subtitle_rect = subtitle.get_rect(center=(center_x, 80))
+        screen.blit(subtitle, subtitle_rect)
+
+        mouse_pos = pygame.mouse.get_pos()
+        left_x = 50
+        middle_x = center_x - 100
+        right_x = center_x + 150
+
+        # === LEFT COLUMN: Permanent People ===
+        section_title = self.fonts['small'].render("PERMANENT MEMBERS", True, DOCKET_GOLDEN)
+        screen.blit(section_title, (left_x, 140))
+
+        for name, rect in self.permanent_rects:
+            # Hover highlight
+            if rect.collidepoint(mouse_pos):
+                pygame.draw.rect(screen, UI_PANEL, rect, border_radius=6)
+
+            # Checkbox
+            checkbox_rect = pygame.Rect(rect.x + 5, rect.y + 6, 22, 22)
+            pygame.draw.rect(screen, DOCKET_GOLDEN_DARK, checkbox_rect, border_radius=3)
+            if self.selected_permanent.get(name, False):
+                pygame.draw.rect(screen, DOCKET_GOLDEN, checkbox_rect.inflate(-5, -5), border_radius=2)
+
+            # Name
+            name_text = self.fonts['small'].render(name, True, UI_TEXT)
+            screen.blit(name_text, (rect.x + 35, rect.y + 8))
+
+        # === MIDDLE COLUMN: Add New Person ===
+        if not self.graduation_inputs:  # Only show if no graduation inputs active
+            new_label = self.fonts['small'].render("ADD NEW PERSON", True, (100, 200, 100))
+            screen.blit(new_label, (middle_x, 140))
+            self.new_name_input.draw(screen, bg_color=(80, 90, 80), text_color=(255, 255, 255))
+
+            hint = self.fonts['tiny'].render("Type name + Enter", True, UI_TEXT_DIM)
+            screen.blit(hint, (middle_x, self.new_name_input.rect.bottom + 5))
+
+        # === RIGHT COLUMN: Recurring People ===
+        section_title2 = self.fonts['small'].render("RECURRING GUESTS", True, (150, 150, 200))
+        screen.blit(section_title2, (right_x, 140))
+
+        for name, rect, count in self.recurring_rects:
+            # Hover highlight
+            if rect.collidepoint(mouse_pos):
+                pygame.draw.rect(screen, UI_PANEL, rect, border_radius=6)
+
+            # Checkbox
+            checkbox_rect = pygame.Rect(rect.x + 5, rect.y + 6, 22, 22)
+            pygame.draw.rect(screen, (100, 100, 150), checkbox_rect, border_radius=3)
+            if self.selected_recurring.get(name, False):
+                pygame.draw.rect(screen, (150, 150, 220), checkbox_rect.inflate(-5, -5), border_radius=2)
+
+            # Name with count (and star if they have docket entries)
+            star = "★ " if name in self.starred_people else ""
+            name_color = DOCKET_GOLDEN if name in self.starred_people else UI_TEXT
+            name_text = self.fonts['small'].render(f"{star}{name} ({count})", True, name_color)
+            screen.blit(name_text, (rect.x + 35, rect.y + 8))
+
+            # Draw graduation inputs if this person is pending
+            if name in self.graduation_inputs:
+                inputs = self.graduation_inputs[name]
+                label_x = right_x - 60
+
+                # Golden pick
+                golden_label = self.fonts['tiny'].render("Golden:", True, DOCKET_GOLDEN)
+                screen.blit(golden_label, (label_x, inputs['golden'].rect.y + 12))
+                inputs['golden'].draw(screen, bg_color=(80, 70, 50), text_color=(255, 255, 255))
+
+                # Diamond pick
+                diamond_label = self.fonts['tiny'].render("Diamond:", True, DOCKET_DIAMOND)
+                screen.blit(diamond_label, (label_x, inputs['diamond'].rect.y + 12))
+                inputs['diamond'].draw(screen, bg_color=(50, 70, 90), text_color=(255, 255, 255))
+
+                # Shit pick
+                shit_label = self.fonts['tiny'].render("Shit:", True, DOCKET_SHIT)
+                screen.blit(shit_label, (label_x, inputs['shit'].rect.y + 12))
+                inputs['shit'].draw(screen, bg_color=(80, 60, 50), text_color=(255, 255, 255))
+
+        # Button
+        self.start_button.draw(screen)
+
+
+class DocketResultScreen:
+    """Screen shown after a docket spin completes."""
+    def __init__(self, fonts: dict):
+        self.fonts = fonts
+        self.window_width = WINDOW_WIDTH
+        self.window_height = WINDOW_HEIGHT
+
+        center_x = WINDOW_WIDTH // 2
+        self.title_button = Button(center_x - 220, 550, 200, 60, "TITLE SCREEN", fonts['medium'])
+        self.quit_button = Button(center_x + 20, 550, 200, 60, "QUIT", fonts['medium'],
+                                  color=(150, 60, 60), hover_color=(200, 80, 80))
+
+        # For golden docket replacement input
+        self.replacement_input = TextBox(center_x - 200, 450, 400, 60, fonts['medium'])
+        self.confirm_button = Button(center_x - 75, 510, 150, 40, "CONFIRM", fonts['small'],
+                                     color=(50, 150, 50), hover_color=(70, 200, 70))
+
+        self.winner_name = ""
+        self.winner_movie = ""
+        self.docket_type = "golden"
+        self.needs_replacement = False
+        self.replacement_confirmed = False
+        self.animation_timer = 0
+
+    def update_layout(self, window_width: int, window_height: int):
+        self.window_width = window_width
+        self.window_height = window_height
+        center_x = window_width // 2
+        center_y = window_height // 2
+
+        self.title_button.rect = pygame.Rect(center_x - 220, center_y + 180, 200, 60)
+        self.quit_button.rect = pygame.Rect(center_x + 20, center_y + 180, 200, 60)
+        self.replacement_input.rect = pygame.Rect(center_x - 200, center_y + 80, 400, 60)
+        self.confirm_button.rect = pygame.Rect(center_x - 75, center_y + 140, 150, 40)
+
+    def set_result(self, name: str, movie: str, docket_type: str):
+        """Set the winning result."""
+        self.winner_name = name
+        self.winner_movie = movie
+        self.docket_type = docket_type
+        self.needs_replacement = (docket_type == "golden")
+        self.replacement_confirmed = False
+        self.replacement_input.text = ""
+        # Auto-activate textbox for golden docket so user can type immediately
+        self.replacement_input.active = self.needs_replacement
+        self.animation_timer = 0
+        # Update layout to ensure rect positions are correct
+        self.update_layout(self.window_width, self.window_height)
+
+    def update(self, mouse_pos: tuple):
+        self.animation_timer += 1
+        self.replacement_input.update()
+
+        # Only show title/quit after replacement confirmed (or if not needed)
+        show_final_buttons = not self.needs_replacement or self.replacement_confirmed
+        if show_final_buttons:
+            self.title_button.update(mouse_pos)
+            self.quit_button.update(mouse_pos)
+
+        if self.needs_replacement and not self.replacement_confirmed:
+            self.confirm_button.update(mouse_pos)
+            self.confirm_button.enabled = len(self.replacement_input.text.strip()) > 0
+
+    def handle_event(self, event):
+        """Handle text input events. Returns True if ENTER was pressed to confirm."""
+        if self.needs_replacement and not self.replacement_confirmed:
+            # Check for ENTER key to trigger confirmation
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+                if self.replacement_input.text.strip():
+                    return True  # Signal to confirm
+                return False  # Ignore if empty
+            # Handle other events normally (but filter out RETURN from TextBox)
+            if not (event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN):
+                self.replacement_input.handle_event(event)
+        return False
+
+    def check_confirm(self, mouse_pos: tuple, mouse_clicked: bool) -> str:
+        """Check if replacement was confirmed. Returns new movie name or None."""
+        if self.needs_replacement and not self.replacement_confirmed:
+            if self.confirm_button.is_clicked(mouse_pos, mouse_clicked):
+                new_movie = self.replacement_input.text.strip()
+                if new_movie:
+                    self.replacement_confirmed = True
+                    return new_movie
+        return None
+
+    def check_title(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        show_final = not self.needs_replacement or self.replacement_confirmed
+        return show_final and self.title_button.is_clicked(mouse_pos, mouse_clicked)
+
+    def check_quit(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        show_final = not self.needs_replacement or self.replacement_confirmed
+        return show_final and self.quit_button.is_clicked(mouse_pos, mouse_clicked)
+
+    def draw(self, screen: pygame.Surface):
+        # Background color based on docket type
+        if self.docket_type == "golden":
+            bg_color = (40, 35, 20)
+            accent = DOCKET_GOLDEN
+            label = "GOLDEN DOCKET"
+        elif self.docket_type == "diamond":
+            bg_color = (20, 30, 45)
+            accent = DOCKET_DIAMOND
+            label = "DIAMOND DOCKET"
+        elif self.docket_type == "final":
+            bg_color = (40, 35, 25)
+            accent = (255, 200, 50)  # Gold for final wheel
+            label = "FINAL WHEEL"
+        else:
+            bg_color = (35, 25, 20)
+            accent = DOCKET_SHIT
+            label = "SHIT DOCKET"
+
+        screen.fill(bg_color)
+
+        center_x = self.window_width // 2
+        center_y = self.window_height // 2
+
+        # Pulsing glow
+        pulse = abs((self.animation_timer % 60) - 30) / 30
+        glow_size = int(200 + pulse * 30)
+
+        for i in range(4):
+            alpha = int(25 - i * 5)
+            glow_surface = pygame.Surface((glow_size * 2, glow_size * 2), pygame.SRCALPHA)
+            glow_color = (*accent[:3], alpha)
+            pygame.draw.circle(glow_surface, glow_color, (glow_size, glow_size), glow_size - i * 15)
+            screen.blit(glow_surface, (center_x - glow_size, center_y - 120 - glow_size // 2))
+
+        # Docket type label
+        type_label = self.fonts['medium'].render(label, True, accent)
+        type_rect = type_label.get_rect(center=(center_x, center_y - 180))
+        screen.blit(type_label, type_rect)
+
+        # Winner announcement
+        winner_label = self.fonts['large'].render("WINNER!", True, accent)
+        winner_rect = winner_label.get_rect(center=(center_x, center_y - 120))
+        screen.blit(winner_label, winner_rect)
+
+        # Movie title
+        movie_surface = self.fonts['huge'].render(self.winner_movie, True, WHITE)
+        movie_rect = movie_surface.get_rect(center=(center_x, center_y - 40))
+        if movie_rect.width > self.window_width - 100:
+            movie_surface = self.fonts['title'].render(self.winner_movie, True, WHITE)
+            movie_rect = movie_surface.get_rect(center=(center_x, center_y - 40))
+        screen.blit(movie_surface, movie_rect)
+
+        # Picked by (or source for final wheel)
+        if self.docket_type == "final":
+            source_text = f"From: {self.winner_name}"
+        else:
+            source_text = f"Picked by {self.winner_name}"
+        picked_by = self.fonts['medium'].render(source_text, True, UI_TEXT_DIM)
+        picked_rect = picked_by.get_rect(center=(center_x, center_y + 20))
+        screen.blit(picked_by, picked_rect)
+
+        # Golden docket replacement input
+        if self.needs_replacement and not self.replacement_confirmed:
+            prompt = self.fonts['small'].render(f"{self.winner_name}, enter your new golden pick:", True, accent)
+            prompt_rect = prompt.get_rect(center=(center_x, center_y + 60))
+            screen.blit(prompt, prompt_rect)
+
+            self.replacement_input.draw(screen, bg_color=(60, 55, 40), text_color=(255, 255, 255))
+            self.confirm_button.draw(screen)
+        elif self.replacement_confirmed:
+            confirmed_text = self.fonts['small'].render(f"New pick saved! Enjoy the movie!", True, (100, 255, 100))
+            confirmed_rect = confirmed_text.get_rect(center=(center_x, center_y + 80))
+            screen.blit(confirmed_text, confirmed_rect)
+
+            self.title_button.draw(screen)
+            self.quit_button.draw(screen)
+        else:
+            # Diamond, shit, or final - no replacement needed
+            if self.docket_type == "final":
+                enjoy_text = self.fonts['medium'].render("Removed from list! Enjoy the movie!", True, (100, 255, 100))
+            else:
+                enjoy_text = self.fonts['medium'].render("Enjoy the movie!", True, UI_TEXT)
+            enjoy_rect = enjoy_text.get_rect(center=(center_x, center_y + 80))
+            screen.blit(enjoy_text, enjoy_rect)
+
+            self.title_button.draw(screen)
+            self.quit_button.draw(screen)
+
+
+class DocketSpinScreen:
+    """Screen that displays the spinning docket wheel."""
+    def __init__(self, fonts: dict):
+        self.fonts = fonts
+        self.window_width = WINDOW_WIDTH
+        self.window_height = WINDOW_HEIGHT
+        self.wheel = None
+        self.zoom_transition = None
+        self.spin_button = None
+        self.force_upgrade_button = None  # Debug button to force landing on sliver
+
+    def update_layout(self, window_width: int, window_height: int):
+        self.window_width = window_width
+        self.window_height = window_height
+
+    def set_wheel(self, wheel):
+        """Set the wheel to display."""
+        self.wheel = wheel
+        center_x = self.window_width // 2
+        self.spin_button = Button(center_x - 60, self.window_height - 80, 120, 50, "SPIN!", self.fonts['medium'],
+                                  color=wheel.colors['dark'], hover_color=wheel.colors['primary'])
+        # Debug button to force upgrade (for golden, diamond, and shit)
+        if wheel.docket_type in ('golden', 'diamond', 'shit'):
+            self.force_upgrade_button = Button(20, self.window_height - 80, 180, 40, "FORCE UPGRADE", self.fonts['small'],
+                                               color=(100, 50, 100), hover_color=(150, 80, 150))
+        else:
+            self.force_upgrade_button = None
+
+    def set_zoom_transition(self, transition):
+        """Set a zoom transition to display."""
+        self.zoom_transition = transition
+
+    def update(self, mouse_pos: tuple):
+        if self.zoom_transition:
+            self.zoom_transition.update()
+            if self.zoom_transition.complete:
+                self.wheel = self.zoom_transition.get_new_wheel()
+                self.zoom_transition = None
+                # Update spin button for new wheel
+                center_x = self.window_width // 2
+                self.spin_button = Button(center_x - 60, self.window_height - 80, 120, 50, "SPIN!", self.fonts['medium'],
+                                          color=self.wheel.colors['dark'], hover_color=self.wheel.colors['primary'])
+                # Update force upgrade button for new wheel
+                if self.wheel.docket_type in ('golden', 'diamond', 'shit'):
+                    self.force_upgrade_button = Button(20, self.window_height - 80, 180, 40, "FORCE UPGRADE", self.fonts['small'],
+                                                       color=(100, 50, 100), hover_color=(150, 80, 150))
+                else:
+                    self.force_upgrade_button = None
+        elif self.wheel:
+            self.wheel.update()
+            if self.spin_button:
+                self.spin_button.update(mouse_pos)
+                # Hide spin button while spinning or stopped
+                self.spin_button.enabled = not self.wheel.spinning and not self.wheel.stopped
+            if self.force_upgrade_button:
+                self.force_upgrade_button.update(mouse_pos)
+                self.force_upgrade_button.enabled = not self.wheel.spinning and not self.wheel.stopped
+
+    def check_spin(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        if self.spin_button and self.wheel and not self.wheel.spinning and not self.wheel.stopped:
+            return self.spin_button.is_clicked(mouse_pos, mouse_clicked)
+        return False
+
+    def check_force_upgrade(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        """Check if force upgrade debug button was clicked."""
+        if self.force_upgrade_button and self.wheel and not self.wheel.spinning and not self.wheel.stopped:
+            return self.force_upgrade_button.is_clicked(mouse_pos, mouse_clicked)
+        return False
+
+    def is_stopped(self) -> bool:
+        return self.wheel and self.wheel.stopped
+
+    def is_transitioning(self) -> bool:
+        return self.zoom_transition is not None
+
+    def get_result(self):
+        if self.wheel:
+            return self.wheel.get_result()
+        return None
+
+    def draw(self, screen: pygame.Surface):
+        # Background - same as beyblade arena
+        screen.fill(UI_BG)
+
+        if self.zoom_transition:
+            self.zoom_transition.draw(screen)
+        elif self.wheel:
+            self.wheel.draw(screen)
+
+            # Title
+            center_x = self.window_width // 2
+            if self.wheel.docket_type == "golden":
+                title = "GOLDEN DOCKET"
+                color = DOCKET_GOLDEN
+            elif self.wheel.docket_type == "diamond":
+                title = "DIAMOND DOCKET"
+                color = DOCKET_DIAMOND
+            elif self.wheel.docket_type == "final":
+                title = "FINAL WHEEL"
+                color = (255, 200, 50)  # Gold
+            else:
+                title = "SHIT DOCKET"
+                color = DOCKET_SHIT
+
+            title_surf = self.fonts['title'].render(title, True, color)
+            title_rect = title_surf.get_rect(center=(center_x, 40))
+            screen.blit(title_surf, title_rect)
+
+            # Spin button
+            if self.spin_button and self.spin_button.enabled:
+                self.spin_button.draw(screen)
+
+            # Force upgrade debug button
+            if self.force_upgrade_button and self.force_upgrade_button.enabled:
+                self.force_upgrade_button.draw(screen)
+
+            # Status text
+            if self.wheel.spinning:
+                status = self.fonts['medium'].render("Spinning...", True, UI_TEXT_DIM)
+            elif self.wheel.stopped:
+                status = self.fonts['medium'].render("Click anywhere to continue", True, color)
+            else:
+                status = None
+
+            if status:
+                status_rect = status.get_rect(center=(center_x, self.window_height - 40))
+                screen.blit(status, status_rect)
 
 
 def create_fonts() -> dict:

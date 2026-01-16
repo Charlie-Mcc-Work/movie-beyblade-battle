@@ -5,14 +5,19 @@ import os
 from .constants import (
     WINDOW_WIDTH, WINDOW_HEIGHT, FPS, UI_BG, WHITE, LIGHT_BLUE,
     STATE_INPUT, STATE_BATTLE, STATE_HEAT_TRANSITION, STATE_VICTORY, STATE_LEADERBOARD,
+    STATE_DOCKET_SELECT, STATE_DOCKET_SPIN, STATE_DOCKET_RESULT, STATE_DOCKET_ZOOM,
     BEYBLADE_COLORS, ABILITY_CHANCE, ABILITIES, ARENA_RADIUS, AVATAR_ABILITIES,
-    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE
+    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE,
+    GOLDEN_DOCKET_FILE, DIAMOND_DOCKET_FILE, SHIT_DOCKET_FILE,
+    PERMANENT_PEOPLE_FILE, PEOPLE_COUNTER_FILE
 )
 from .beyblade import Beyblade, check_collision, resolve_collision
 from .arena import Arena
 from .effects import EffectsManager
 from .avatar import AvatarManager, AvatarState
-from .ui import InputScreen, BattleHUD, HeatTransitionScreen, VictoryScreen, LeaderboardScreen, create_fonts
+from .ui import (InputScreen, BattleHUD, HeatTransitionScreen, VictoryScreen, LeaderboardScreen,
+                 ParticipantSelectScreen, DocketResultScreen, DocketSpinScreen, create_fonts)
+from .docket import DocketWheel, DocketZoomTransition
 
 
 class Game:
@@ -42,6 +47,17 @@ class Game:
         self.victory_screen = VictoryScreen(self.fonts)
         self.leaderboard_screen = LeaderboardScreen(self.fonts)
 
+        # Docket screens (initialized when needed)
+        self.participant_select_screen = None
+        self.docket_spin_screen = DocketSpinScreen(self.fonts)
+        self.docket_result_screen = DocketResultScreen(self.fonts)
+
+        # Docket state
+        self.docket_participants = []  # Selected participant names
+        self.current_docket_type = 'golden'  # 'golden', 'diamond', or 'shit'
+        self.docket_data = {'golden': {}, 'diamond': {}, 'shit': {}}
+        self.people_counter = {}  # {name: count} for recurring people
+
         # Always update layouts for actual window size
         self.arena.update_center(self.window_width, self.window_height)
         self.input_screen.update_layout(self.window_width, self.window_height)
@@ -49,6 +65,8 @@ class Game:
         self.heat_transition_screen.update_layout(self.window_width, self.window_height)
         self.victory_screen.update_layout(self.window_width, self.window_height)
         self.leaderboard_screen.update_layout(self.window_width, self.window_height)
+        self.docket_spin_screen.update_layout(self.window_width, self.window_height)
+        self.docket_result_screen.update_layout(self.window_width, self.window_height)
 
         self.beyblades: list[Beyblade] = []
         self.eliminated: list[str] = []  # Current heat eliminations
@@ -181,6 +199,9 @@ class Game:
                 color = BEYBLADE_COLORS[len(self.movie_abilities) % len(BEYBLADE_COLORS)]
                 self.movie_abilities[movie] = (ability_key, color)
 
+        # Save original movie count BEFORE prestige duplicates for accurate group display
+        original_movie_count = len(movie_list)
+
         # Add prestige duplicates to movie list
         for movie in prestige_movies:
             movie_list.append(f"{movie} (Double)")
@@ -188,9 +209,20 @@ class Game:
         # Shuffle all movies (including prestige duplicates) for random heat placement
         random.shuffle(movie_list)
 
-        # Check if we need a preliminary round (>55 movies)
-        if len(movie_list) > self.preliminary_max_size:
-            # Split movies into groups of max 55
+        # Check if we need a preliminary round (>55 movies) - use ORIGINAL count for group sizing
+        if original_movie_count > self.preliminary_max_size:
+            # Calculate how many groups we need based on original count
+            num_groups = (original_movie_count + self.preliminary_max_size - 1) // self.preliminary_max_size
+
+            # Calculate original group sizes (what we display to user)
+            original_group_sizes = []
+            remaining = original_movie_count
+            for _ in range(num_groups):
+                size = min(remaining, self.preliminary_max_size)
+                original_group_sizes.append(size)
+                remaining -= size
+
+            # Split actual movies (with prestige duplicates) into groups
             self.preliminary_groups = []
             for i in range(0, len(movie_list), self.preliminary_max_size):
                 group = movie_list[i:i + self.preliminary_max_size]
@@ -199,8 +231,8 @@ class Game:
 
             self.is_preliminary = True
 
-            # Create group names for the preliminary battle
-            group_names = [f"Group {i+1} ({len(g)} movies)" for i, g in enumerate(self.preliminary_groups)]
+            # Create group names using ORIGINAL movie counts (before prestige duplicates)
+            group_names = [f"Group {i+1} ({original_group_sizes[i]} movies)" for i in range(len(self.preliminary_groups))]
 
             # Assign abilities to the group beyblades
             for i, group_name in enumerate(group_names):
@@ -436,53 +468,45 @@ class Game:
                 beyblade.y = -1000
                 beyblade.ferris_timer = 300  # 5 seconds
 
+    def _handle_resize(self, new_width, new_height):
+        """Handle window resize - updates all layouts."""
+        if new_width == self.window_width and new_height == self.window_height:
+            return
+        self.window_width = new_width
+        self.window_height = new_height
+        # Update arena center and get offset
+        dx, dy = self.arena.update_center(new_width, new_height)
+        # Move all beyblades by the offset to keep them centered
+        for beyblade in self.beyblades:
+            beyblade.x += dx
+            beyblade.y += dy
+        # Update avatar positions
+        self.avatar_manager.update_positions(self.arena)
+        # Update UI components
+        self.input_screen.update_layout(new_width, new_height)
+        self.battle_hud.update_layout(new_width, new_height)
+        self.heat_transition_screen.update_layout(new_width, new_height)
+        self.victory_screen.update_layout(new_width, new_height)
+        self.leaderboard_screen.update_layout(new_width, new_height)
+        self.docket_spin_screen.update_layout(new_width, new_height)
+        self.docket_result_screen.update_layout(new_width, new_height)
+        if self.participant_select_screen:
+            self.participant_select_screen.update_layout(new_width, new_height)
+
     def handle_events(self):
         mouse_clicked = False
+
+        # Check for window size changes every frame (works better with tiling WMs like i3)
+        current_size = self.screen.get_size()
+        if current_size[0] != self.window_width or current_size[1] != self.window_height:
+            self._handle_resize(current_size[0], current_size[1])
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
 
             if event.type == pygame.VIDEORESIZE:
-                self.window_width = event.w
-                self.window_height = event.h
-                self.screen = pygame.display.set_mode((event.w, event.h), pygame.RESIZABLE)
-                # Update arena center and get offset
-                dx, dy = self.arena.update_center(event.w, event.h)
-                # Move all beyblades by the offset to keep them centered
-                for beyblade in self.beyblades:
-                    beyblade.x += dx
-                    beyblade.y += dy
-                # Update avatar positions
-                self.avatar_manager.update_positions(self.arena)
-                # Update UI components
-                self.input_screen.update_layout(event.w, event.h)
-                self.battle_hud.update_layout(event.w, event.h)
-                self.heat_transition_screen.update_layout(event.w, event.h)
-                self.victory_screen.update_layout(event.w, event.h)
-                self.leaderboard_screen.update_layout(event.w, event.h)
-
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
-                # Toggle fullscreen
-                self.fullscreen = not getattr(self, 'fullscreen', False)
-                if self.fullscreen:
-                    self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-                else:
-                    self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
-                # Update window dimensions and layouts
-                actual_size = self.screen.get_size()
-                self.window_width = actual_size[0]
-                self.window_height = actual_size[1]
-                dx, dy = self.arena.update_center(self.window_width, self.window_height)
-                for beyblade in self.beyblades:
-                    beyblade.x += dx
-                    beyblade.y += dy
-                self.avatar_manager.update_positions(self.arena)
-                self.input_screen.update_layout(self.window_width, self.window_height)
-                self.battle_hud.update_layout(self.window_width, self.window_height)
-                self.heat_transition_screen.update_layout(self.window_width, self.window_height)
-                self.victory_screen.update_layout(self.window_width, self.window_height)
-                self.leaderboard_screen.update_layout(self.window_width, self.window_height)
+                self._handle_resize(event.w, event.h)
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_clicked = True
@@ -492,6 +516,17 @@ class Game:
 
             if self.state == STATE_LEADERBOARD:
                 self.leaderboard_screen.handle_scroll(event)
+
+            if self.state == STATE_DOCKET_RESULT:
+                if self.docket_result_screen.handle_event(event):
+                    # ENTER was pressed with valid input - trigger confirmation
+                    new_movie = self.docket_result_screen.replacement_input.text.strip()
+                    if new_movie:
+                        self.docket_result_screen.replacement_confirmed = True
+                        self._update_golden_docket(self.docket_result_screen.winner_name, new_movie)
+
+            if self.state == STATE_DOCKET_SELECT and self.participant_select_screen:
+                self.participant_select_screen.handle_event(event)
 
         return mouse_clicked
 
@@ -508,6 +543,10 @@ class Game:
             clicked_queue_item = self.input_screen.check_queue_click(mouse_pos, mouse_clicked)
             if clicked_queue_item:
                 self.input_screen.remove_from_queue(clicked_queue_item)
+
+            # Check for Golden Docket button click
+            if self.input_screen.check_docket(mouse_pos, mouse_clicked):
+                self._start_docket_select()
 
         elif self.state == STATE_BATTLE:
             self.battle_hud.update(mouse_pos)
@@ -577,6 +616,61 @@ class Game:
                 self._queue_movie(self.winner)
                 self.state = STATE_INPUT
 
+        elif self.state == STATE_DOCKET_SELECT:
+            self.participant_select_screen.update(mouse_pos)
+            self.participant_select_screen.handle_click(mouse_pos, mouse_clicked)
+
+            if self.participant_select_screen.check_start(mouse_pos, mouse_clicked):
+                self._start_docket_spin()
+
+        elif self.state == STATE_DOCKET_SPIN:
+            self.docket_spin_screen.update(mouse_pos)
+
+            # Check if spin button clicked
+            if self.docket_spin_screen.check_spin(mouse_pos, mouse_clicked):
+                self.docket_spin_screen.wheel.spin()
+
+            # Check if force upgrade debug button clicked
+            if self.docket_spin_screen.check_force_upgrade(mouse_pos, mouse_clicked):
+                self.docket_spin_screen.wheel.force_upgrade()
+
+            # Check if wheel stopped - click anywhere to continue
+            if self.docket_spin_screen.is_stopped() and mouse_clicked:
+                result = self.docket_spin_screen.get_result()
+                if result:
+                    result_type, entry = result
+                    if result_type == 'upgrade':
+                        # Transition to next docket tier
+                        self._start_docket_zoom()
+                    else:
+                        # Show result screen
+                        name, movie = entry
+                        # For final wheel, remove the movie from source file
+                        if self.current_docket_type == 'final':
+                            self._remove_final_wheel_winner(movie)
+                        self.docket_result_screen.set_result(name, movie, self.current_docket_type)
+                        self.state = STATE_DOCKET_RESULT
+
+        elif self.state == STATE_DOCKET_ZOOM:
+            self.docket_spin_screen.update(mouse_pos)
+
+            # Check if zoom transition complete
+            if not self.docket_spin_screen.is_transitioning():
+                self.state = STATE_DOCKET_SPIN
+
+        elif self.state == STATE_DOCKET_RESULT:
+            self.docket_result_screen.update(mouse_pos)
+
+            # Check for replacement confirmation (golden docket only)
+            new_movie = self.docket_result_screen.check_confirm(mouse_pos, mouse_clicked)
+            if new_movie:
+                self._update_golden_docket(self.docket_result_screen.winner_name, new_movie)
+
+            if self.docket_result_screen.check_title(mouse_pos, mouse_clicked):
+                self.state = STATE_INPUT
+            elif self.docket_result_screen.check_quit(mouse_pos, mouse_clicked):
+                self.running = False
+
     def update_battle(self):
         # Increment frame counter
         self.current_frame += 1
@@ -584,16 +678,16 @@ class Game:
         # Update arena (bumper animations)
         self.arena.update()
 
-        # Interstellar: black holes pull nearby beyblades
+        # Interstellar: black holes pull ALL beyblades on the map (acts as new center)
         for black_hole in self.black_holes:
             for beyblade in self.beyblades:
                 if beyblade.alive and beyblade.name != black_hole['owner_name']:
                     dx = black_hole['x'] - beyblade.x
                     dy = black_hole['y'] - beyblade.y
                     dist = math.sqrt(dx * dx + dy * dy)
-                    if dist > 0 and dist < 400:  # Large cone of influence
-                        # 1.5x the normal center pull strength
-                        pull_strength = 0.18 * (1 - dist / 400)  # Stronger when closer
+                    if dist > 5:  # Avoid division issues when very close
+                        # Constant pull strength across entire map, weaker but always active
+                        pull_strength = 0.08
                         beyblade.vx += (dx / dist) * pull_strength
                         beyblade.vy += (dy / dist) * pull_strength
 
@@ -1545,6 +1639,9 @@ class Game:
                         nuke_left = random.choice([True, False])
                         center_x = self.arena.center_x
 
+                        # Spawn massive nuke blast effect
+                        self.effects.spawn_nuke_blast(center_x, self.arena.center_y, nuke_left, self.arena.radius)
+
                         for target in self.beyblades:
                             if target.alive and target != beyblade:
                                 if (nuke_left and target.x < center_x) or (not nuke_left and target.x >= center_x):
@@ -1810,6 +1907,309 @@ class Game:
         if os.path.exists(MOVIE_LIST_FILE):
             self.input_screen.text_box.load_from_file(MOVIE_LIST_FILE)
         self.input_screen.load_queue()
+
+    def _load_docket_file(self, filepath: str) -> dict:
+        """Load docket entries from file. Returns {name: movie} dict."""
+        entries = {}
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, 'r') as f:
+                    for line in f.read().strip().split('\n'):
+                        if ' - ' in line:
+                            parts = line.split(' - ', 1)
+                            if len(parts) == 2:
+                                name, movie = parts[0].strip(), parts[1].strip()
+                                if name and movie:
+                                    entries[name] = movie
+            except:
+                pass
+        return entries
+
+    def _save_docket_file(self, filepath: str, entries: dict):
+        """Save docket entries to file."""
+        lines = [f"{name} - {movie}" for name, movie in entries.items()]
+        with open(filepath, 'w') as f:
+            f.write('\n'.join(lines))
+
+    def _load_permanent_people(self) -> list:
+        """Load permanent people list from file."""
+        people = []
+        if os.path.exists(PERMANENT_PEOPLE_FILE):
+            try:
+                with open(PERMANENT_PEOPLE_FILE, 'r') as f:
+                    for line in f.read().strip().split('\n'):
+                        name = line.strip()
+                        if name:
+                            people.append(name)
+            except:
+                pass
+        return people
+
+    def _load_people_counter(self) -> dict:
+        """Load people counter from file. Returns {name: count} dict."""
+        counter = {}
+        if os.path.exists(PEOPLE_COUNTER_FILE):
+            try:
+                with open(PEOPLE_COUNTER_FILE, 'r') as f:
+                    for line in f.read().strip().split('\n'):
+                        if ' - ' in line:
+                            parts = line.split(' - ', 1)
+                            if len(parts) == 2:
+                                name = parts[0].strip()
+                                try:
+                                    count = int(parts[1].strip())
+                                    if name:
+                                        counter[name] = count
+                                except ValueError:
+                                    pass
+            except:
+                pass
+        return counter
+
+    def _save_people_counter(self, counter: dict):
+        """Save people counter to file."""
+        lines = [f"{name} - {count}" for name, count in counter.items()]
+        with open(PEOPLE_COUNTER_FILE, 'w') as f:
+            f.write('\n'.join(lines))
+
+    def _remove_from_dockets(self, name: str):
+        """Remove a person from all docket files."""
+        for docket_type in ['golden', 'diamond', 'shit']:
+            if name in self.docket_data[docket_type]:
+                del self.docket_data[docket_type][name]
+        # Save updated docket files
+        self._save_docket_file(GOLDEN_DOCKET_FILE, self.docket_data['golden'])
+        self._save_docket_file(DIAMOND_DOCKET_FILE, self.docket_data['diamond'])
+        self._save_docket_file(SHIT_DOCKET_FILE, self.docket_data['shit'])
+
+    def _add_graduation_picks(self, name: str, picks: dict):
+        """Add a graduating person's docket picks."""
+        self.docket_data['golden'][name] = picks['golden']
+        self.docket_data['diamond'][name] = picks['diamond']
+        self.docket_data['shit'][name] = picks['shit']
+        # Save updated docket files
+        self._save_docket_file(GOLDEN_DOCKET_FILE, self.docket_data['golden'])
+        self._save_docket_file(DIAMOND_DOCKET_FILE, self.docket_data['diamond'])
+        self._save_docket_file(SHIT_DOCKET_FILE, self.docket_data['shit'])
+
+    def _start_docket_select(self):
+        """Start the docket participant selection screen."""
+        # Load all docket files
+        self.docket_data['golden'] = self._load_docket_file(GOLDEN_DOCKET_FILE)
+        self.docket_data['diamond'] = self._load_docket_file(DIAMOND_DOCKET_FILE)
+        self.docket_data['shit'] = self._load_docket_file(SHIT_DOCKET_FILE)
+
+        # Load permanent people and people counter
+        permanent_people = self._load_permanent_people()
+        people_counter = self._load_people_counter()
+
+        # Store people_counter for later updates
+        self.people_counter = people_counter
+
+        # Check if we have any people (permanent or in counter)
+        if not permanent_people and not people_counter and not self.docket_data['golden']:
+            # No participants at all, can't proceed
+            return
+
+        # Create participant select screen with all data
+        self.participant_select_screen = ParticipantSelectScreen(
+            self.fonts,
+            permanent_people,
+            people_counter,
+            self.docket_data
+        )
+        self.participant_select_screen.update_layout(self.window_width, self.window_height)
+        self.state = STATE_DOCKET_SELECT
+
+    def _start_docket_spin(self):
+        """Start the wheel spin with selected participants."""
+        # Get selected participants
+        self.docket_participants = self.participant_select_screen.get_selected_participants()
+
+        if not self.docket_participants:
+            return
+
+        # Handle counter updates for recurring people
+        increments, decrements, newly_added = self.participant_select_screen.get_counter_updates()
+
+        # Add newly added people to the counter (they start at count 1)
+        for name in newly_added:
+            self.people_counter[name] = 1
+
+        # Process increments
+        for name in increments:
+            if name in self.people_counter:
+                self.people_counter[name] += 1
+
+        # Process decrements and remove at 0
+        for name in decrements:
+            if name in self.people_counter:
+                self.people_counter[name] -= 1
+                if self.people_counter[name] <= 0:
+                    # Remove from counter
+                    del self.people_counter[name]
+                    # Remove from all docket files
+                    self._remove_from_dockets(name)
+                    # Also remove from selected participants
+                    if name in self.docket_participants:
+                        self.docket_participants.remove(name)
+
+        # Handle graduation picks (people who just reached 5)
+        graduation_picks = self.participant_select_screen.get_graduation_picks()
+        for name, picks in graduation_picks.items():
+            self._add_graduation_picks(name, picks)
+
+        # Save updated people counter
+        self._save_people_counter(self.people_counter)
+
+        # Check if we still have participants after removals
+        if not self.docket_participants:
+            self.state = STATE_INPUT
+            return
+
+        # Start with golden docket
+        self.current_docket_type = 'golden'
+
+        # Build entries list for the wheel
+        entries = []
+        for name in self.docket_participants:
+            if name in self.docket_data['golden']:
+                entries.append((name, self.docket_data['golden'][name]))
+
+        if not entries:
+            return
+
+        # Build next tier entries for preview (diamond docket)
+        next_tier_entries = []
+        for name in self.docket_participants:
+            if name in self.docket_data['diamond']:
+                next_tier_entries.append((name, self.docket_data['diamond'][name]))
+
+        # Create the wheel
+        center = (self.window_width // 2, self.window_height // 2)
+        radius = min(self.window_width, self.window_height) // 2 - 100
+        wheel = DocketWheel(entries, 'golden', self.fonts, center, radius, self.effects.sound,
+                           next_tier_entries=next_tier_entries if next_tier_entries else None)
+
+        self.docket_spin_screen.set_wheel(wheel)
+        self.state = STATE_DOCKET_SPIN
+
+    def _start_docket_zoom(self):
+        """Start zoom transition to next docket tier."""
+        # Determine next tier
+        if self.current_docket_type == 'golden':
+            next_type = 'diamond'
+        elif self.current_docket_type == 'diamond':
+            next_type = 'shit'
+        elif self.current_docket_type == 'shit':
+            next_type = 'final'
+        else:
+            # Already at final, shouldn't happen but handle gracefully
+            return
+
+        # Build entries for next tier
+        entries = []
+        if next_type == 'final':
+            # Final wheel: combine movies.txt and queue.txt
+            entries = self._load_final_wheel_entries()
+        else:
+            for name in self.docket_participants:
+                if name in self.docket_data[next_type]:
+                    entries.append((name, self.docket_data[next_type][name]))
+
+        if not entries:
+            # No entries for next tier, show current result instead
+            return
+
+        # Update current docket type
+        self.current_docket_type = next_type
+
+        # Build next-next tier entries for preview (shit docket if going to diamond)
+        next_next_entries = None
+        if next_type == 'diamond':
+            next_next_entries = []
+            for name in self.docket_participants:
+                if name in self.docket_data['shit']:
+                    next_next_entries.append((name, self.docket_data['shit'][name]))
+            if not next_next_entries:
+                next_next_entries = None
+
+        # Create zoom transition
+        center = (self.window_width // 2, self.window_height // 2)
+        radius = min(self.window_width, self.window_height) // 2 - 100
+
+        transition = DocketZoomTransition(
+            self.docket_spin_screen.wheel,
+            next_type,
+            entries,
+            self.fonts,
+            center,
+            radius,
+            sound_manager=self.effects.sound,
+            next_tier_entries=next_next_entries
+        )
+
+        self.docket_spin_screen.set_zoom_transition(transition)
+        self.state = STATE_DOCKET_ZOOM
+
+    def _load_final_wheel_entries(self):
+        """Load combined entries from movies.txt and queue.txt for final wheel."""
+        entries = []
+
+        # Track which file each movie came from
+        self.final_wheel_sources = {}
+
+        # Load from movies.txt
+        try:
+            with open(MOVIE_LIST_FILE, 'r', encoding='utf-8') as f:
+                for line in f:
+                    movie = line.strip()
+                    if movie:
+                        entries.append(("Movies", movie))
+                        self.final_wheel_sources[movie] = MOVIE_LIST_FILE
+        except FileNotFoundError:
+            pass
+
+        # Load from queue.txt
+        try:
+            with open(QUEUE_FILE, 'r', encoding='utf-8') as f:
+                for line in f:
+                    movie = line.strip()
+                    if movie:
+                        entries.append(("Queue", movie))
+                        self.final_wheel_sources[movie] = QUEUE_FILE
+        except FileNotFoundError:
+            pass
+
+        return entries
+
+    def _remove_final_wheel_winner(self, movie: str):
+        """Remove the winning movie from its source file."""
+        if not hasattr(self, 'final_wheel_sources') or movie not in self.final_wheel_sources:
+            return
+
+        source_file = self.final_wheel_sources[movie]
+
+        # Read all movies from source file
+        try:
+            with open(source_file, 'r', encoding='utf-8') as f:
+                movies = [line.strip() for line in f if line.strip()]
+        except FileNotFoundError:
+            return
+
+        # Remove the winning movie
+        if movie in movies:
+            movies.remove(movie)
+
+        # Write back
+        with open(source_file, 'w', encoding='utf-8') as f:
+            for m in movies:
+                f.write(m + '\n')
+
+    def _update_golden_docket(self, name: str, new_movie: str):
+        """Update a participant's golden docket pick."""
+        self.docket_data['golden'][name] = new_movie
+        self._save_docket_file(GOLDEN_DOCKET_FILE, self.docket_data['golden'])
 
     def _end_current_heat(self, survivors: list):
         """Handle end of a heat - advance winners or end tournament."""
@@ -2424,6 +2824,15 @@ class Game:
 
         elif self.state == STATE_LEADERBOARD:
             self.leaderboard_screen.draw(self.screen)
+
+        elif self.state == STATE_DOCKET_SELECT:
+            self.participant_select_screen.draw(self.screen)
+
+        elif self.state in (STATE_DOCKET_SPIN, STATE_DOCKET_ZOOM):
+            self.docket_spin_screen.draw(self.screen)
+
+        elif self.state == STATE_DOCKET_RESULT:
+            self.docket_result_screen.draw(self.screen)
 
         pygame.display.flip()
 
