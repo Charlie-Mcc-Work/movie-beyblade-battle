@@ -214,7 +214,7 @@ class Arena:
         self.current_rect_left = self.rect_left
         self.current_rect_right = self.rect_right
         self.edges_closing = False
-        self.close_speed = 0.15  # Pixels per frame
+        self.close_speed = 0.225  # Pixels per frame (1.5x faster)
 
     def _update_rect_dimensions(self):
         """Update rectangle dimensions based on current radius."""

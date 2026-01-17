@@ -4,9 +4,9 @@ from .constants import (
     WINDOW_WIDTH, WINDOW_HEIGHT, FONT_SIZES,
     UI_BG, UI_PANEL, UI_ACCENT, UI_ACCENT_HOVER, UI_TEXT, UI_TEXT_DIM,
     VICTORY_GOLD, VICTORY_GLOW, WHITE, BLACK, SPEED_OPTIONS,
-    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE,
+    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE, ABILITY_WINS_FILE,
     DOCKET_GOLDEN, DOCKET_GOLDEN_DARK, DOCKET_DIAMOND, DOCKET_DIAMOND_DARK,
-    DOCKET_SHIT, DOCKET_SHIT_DARK
+    DOCKET_SHIT, DOCKET_SHIT_DARK, ABILITIES
 )
 
 
@@ -679,6 +679,12 @@ class LeaderboardScreen:
         self.scroll_offset = 0
         self.winner_name = ""
 
+        # Queue display (non-clickable)
+        self.queue_items = []
+
+        # Ability wins leaderboard
+        self.ability_wins = {}  # {ability_key: win_count}
+
     def update_layout(self, window_width: int, window_height: int):
         self.window_width = window_width
         self.window_height = window_height
@@ -688,11 +694,39 @@ class LeaderboardScreen:
         self.play_again_button.rect = pygame.Rect(center_x + 10, window_height - 80, 150, 50)
         self.quit_button.rect = pygame.Rect(center_x + 185, window_height - 80, 100, 50)
 
+    def load_queue(self):
+        """Load queue items from queue.txt."""
+        self.queue_items = []
+        if os.path.exists(QUEUE_FILE):
+            try:
+                with open(QUEUE_FILE, 'r') as f:
+                    lines = f.read().strip().split('\n')
+                    self.queue_items = [line.strip() for line in lines if line.strip()]
+            except:
+                pass
+
+    def load_ability_wins(self):
+        """Load ability win counts from file."""
+        self.ability_wins = {}
+        if os.path.exists(ABILITY_WINS_FILE):
+            try:
+                with open(ABILITY_WINS_FILE, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if ':' in line:
+                            ability, count = line.rsplit(':', 1)
+                            self.ability_wins[ability.strip()] = int(count.strip())
+            except:
+                pass
+
     def set_rankings(self, winner: str, eliminated: list):
         """Set rankings from winner (1st) and elimination order (last eliminated = 2nd)."""
         self.rankings = [winner] + list(reversed(eliminated))
         self.scroll_offset = 0
         self.winner_name = winner
+        # Reload queue and ability wins
+        self.load_queue()
+        self.load_ability_wins()
 
     def update(self, mouse_pos: tuple):
         self.play_again_button.update(mouse_pos)
@@ -780,6 +814,85 @@ class LeaderboardScreen:
 
         queue_label = self.fonts['tiny'].render("Add to queue, replay", True, UI_TEXT_DIM)
         screen.blit(queue_label, (self.queue_button.rect.centerx - queue_label.get_width() // 2, self.queue_button.rect.bottom + 5))
+
+        # Ability wins panel on the left side
+        if self.ability_wins:
+            panel_width = 220
+            panel_x = 20
+            panel_y = 100
+            line_height = 26
+            # Sort by wins descending
+            sorted_abilities = sorted(self.ability_wins.items(), key=lambda x: x[1], reverse=True)
+            max_items = min(15, len(sorted_abilities))
+            panel_height = max_items * line_height + 50
+
+            # Panel background
+            panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+            panel_surface.fill((40, 50, 60, 220))
+            screen.blit(panel_surface, (panel_x, panel_y))
+            pygame.draw.rect(screen, (100, 180, 255), (panel_x, panel_y, panel_width, panel_height), 2, border_radius=8)
+
+            # Title
+            ability_title = self.fonts['small'].render("ABILITY WINS", True, (100, 180, 255))
+            screen.blit(ability_title, (panel_x + 10, panel_y + 8))
+
+            # Ability rankings
+            item_y = panel_y + 38
+            for i, (ability_key, wins) in enumerate(sorted_abilities[:max_items]):
+                # Get ability display name and color
+                ability_data = ABILITIES.get(ability_key, {})
+                ability_name = ability_data.get('name', ability_key)
+                ability_color = ability_data.get('color', (200, 200, 200))
+
+                # Brighten the color for readability
+                bright_color = tuple(min(255, c + 60) for c in ability_color)
+
+                # Rank number
+                rank_text = self.fonts['tiny'].render(f"{i+1}.", True, UI_TEXT_DIM)
+                screen.blit(rank_text, (panel_x + 10, item_y))
+
+                # Ability name (truncated if needed)
+                display_name = ability_name if len(ability_name) <= 14 else ability_name[:12] + ".."
+                name_text = self.fonts['tiny'].render(display_name, True, bright_color)
+                screen.blit(name_text, (panel_x + 35, item_y))
+
+                # Win count
+                wins_text = self.fonts['tiny'].render(f"{wins}", True, VICTORY_GOLD)
+                screen.blit(wins_text, (panel_x + panel_width - 30, item_y))
+
+                item_y += line_height
+
+        # Queue panel on the right side (non-clickable)
+        if self.queue_items:
+            panel_width = 250
+            panel_x = self.window_width - panel_width - 20
+            panel_y = 100
+            line_height = 28
+            max_items = min(12, len(self.queue_items))
+            panel_height = max_items * line_height + 50
+
+            # Panel background
+            panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+            panel_surface.fill((50, 45, 40, 220))
+            screen.blit(panel_surface, (panel_x, panel_y))
+            pygame.draw.rect(screen, (255, 180, 100), (panel_x, panel_y, panel_width, panel_height), 2, border_radius=8)
+
+            # Title
+            queue_title = self.fonts['small'].render("QUEUE", True, (255, 180, 100))
+            screen.blit(queue_title, (panel_x + 10, panel_y + 8))
+
+            # Queue items (display only)
+            item_y = panel_y + 38
+            for i, item in enumerate(self.queue_items[:max_items]):
+                display_name = item if len(item) <= 22 else item[:19] + "..."
+                item_text = self.fonts['tiny'].render(f"  {display_name}", True, (255, 200, 150))
+                screen.blit(item_text, (panel_x + 10, item_y))
+                item_y += line_height
+
+            # Show if there are more items
+            if len(self.queue_items) > max_items:
+                more_text = self.fonts['tiny'].render(f"+{len(self.queue_items) - max_items} more...", True, UI_TEXT_DIM)
+                screen.blit(more_text, (panel_x + 10, item_y))
 
 
 class ParticipantSelectScreen:

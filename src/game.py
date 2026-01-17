@@ -7,7 +7,7 @@ from .constants import (
     STATE_INPUT, STATE_BATTLE, STATE_HEAT_TRANSITION, STATE_VICTORY, STATE_LEADERBOARD,
     STATE_DOCKET_SELECT, STATE_DOCKET_SPIN, STATE_DOCKET_RESULT, STATE_DOCKET_ZOOM,
     BEYBLADE_COLORS, ABILITY_CHANCE, ABILITIES, ARENA_RADIUS, AVATAR_ABILITIES,
-    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE,
+    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE, ABILITY_WINS_FILE,
     GOLDEN_DOCKET_FILE, DIAMOND_DOCKET_FILE, SHIT_DOCKET_FILE,
     PERMANENT_PEOPLE_FILE, PEOPLE_COUNTER_FILE
 )
@@ -75,6 +75,7 @@ class Game:
         self.speed_multiplier = 1
         self.winner = None
         self.round_number = 1
+        self.ability_win_recorded = False  # Prevent double-recording ability wins
 
         # Tournament state
         self.heats: list[list[str]] = []
@@ -156,11 +157,21 @@ class Game:
 
     def start_battle(self, movie_list: list):
         """Initialize a new tournament with the given movie list."""
+        # Deduplicate movie list (preserve order, keep first occurrence)
+        seen = set()
+        unique_movies = []
+        for movie in movie_list:
+            if movie not in seen:
+                seen.add(movie)
+                unique_movies.append(movie)
+        movie_list = unique_movies
+
         self.eliminated.clear()
         self.all_eliminated.clear()
         self.effects.clear()
         self.winner = None
         self.round_number = 1
+        self.ability_win_recorded = False  # Reset for new tournament
         self.heat_winners.clear()
         self.current_heat = 0
         self.is_finals = False
@@ -1894,6 +1905,37 @@ class Game:
             self.input_screen.text_box.load_from_file(MOVIE_LIST_FILE)
         self.input_screen.load_queue()
 
+    def _record_ability_win(self, winner_name: str):
+        """Record the winning movie's ability to the ability wins file."""
+        # Get the winner's ability from movie_abilities
+        if winner_name not in self.movie_abilities:
+            return
+
+        ability_key, _ = self.movie_abilities[winner_name]
+        if not ability_key:
+            return
+
+        # Load current ability wins
+        ability_wins = {}
+        if os.path.exists(ABILITY_WINS_FILE):
+            try:
+                with open(ABILITY_WINS_FILE, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if ':' in line:
+                            ability, count = line.rsplit(':', 1)
+                            ability_wins[ability.strip()] = int(count.strip())
+            except:
+                pass
+
+        # Increment the win count for this ability
+        ability_wins[ability_key] = ability_wins.get(ability_key, 0) + 1
+
+        # Save updated ability wins
+        with open(ABILITY_WINS_FILE, 'w') as f:
+            for ability, count in sorted(ability_wins.items()):
+                f.write(f"{ability}: {count}\n")
+
     def _load_docket_file(self, filepath: str) -> dict:
         """Load docket entries from file. Returns {name: movie} dict."""
         entries = {}
@@ -2245,6 +2287,10 @@ class Game:
             else:
                 self.winner = "No Winner"
                 self.victory_screen.set_winner("No Winner")
+            # Record the winning ability (only once per tournament)
+            if self.winner and self.winner != "No Winner" and not self.ability_win_recorded:
+                self._record_ability_win(self.winner)
+                self.ability_win_recorded = True
             self.effects.sound.play('victory')
             self.avatar_manager.sync_with_beyblades(self.beyblades, winner_name=self.winner)
             self.state = STATE_VICTORY

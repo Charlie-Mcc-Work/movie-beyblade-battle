@@ -175,6 +175,7 @@ DIAMOND_DOCKET_FILE = "diamonddocket.txt"
 SHIT_DOCKET_FILE = "shitdocket.txt"
 PERMANENT_PEOPLE_FILE = "permenantpeople.txt"
 PEOPLE_COUNTER_FILE = "peoplecounter.txt"
+ABILITY_WINS_FILE = "abilitywins.txt"
 
 # Avatar settings
 AVATAR_DISTANCE_FROM_ARENA = 60  # Pixels outside arena edge

@@ -1,7 +1,6 @@
 Sanjuro
 The Human Condition Part 1
 Come and See
-Schindler's List
 For a Few Dollars More
 The Battle of Algiers
 Incendies
@@ -11,17 +10,36 @@ It's a Wonderful Life
 Stalker
 Thief
 The Pianist
-The Mist
 The Voice of Hind Rajab
 Happy as Lazzaro
 Lars and the Real Girl
-Master and Command: The Far Side of the World
 Dead Poets Society
 Children of Men
 Akira
 Dog Day Afternoon
 Fallen Angels
 Fargo
+Trespass
+Secret Obsession
+The Snowman
+Spiderhead
+It's What's Inside
+The A-Team
+The Marksman
+Ambulance
+The Iceman
+Honest Thief
+The Highwaymen
+The Call
+Four Brothers
+The Talented Mr. Ripley
+Fury
+The Covenant
+Black Swan
+Saltburn
+The Perks of being a Wallflower
+The Silence of the Lambs
+Gone Girl
 American History X
 Scarface
 Chicago
@@ -46,7 +64,6 @@ The Long Goodbye
 The Cook, The Thief, His Wife, and Her Lover
 Rashomon
 The Aviator
-Conclave
 First Blood
 Lady Bird
 Palestine 36
@@ -54,6 +71,8 @@ Legally Blonde
 Titanic
 Total Recall
 Anora
+Cast Away
+Mr. & Mrs. Smith
 Jesus Christ Superstar
 The Trial of the Chicago 7
 They Live
@@ -67,7 +86,6 @@ Sin City
 Alien3
 The Sixth Sense
 Spartacus
-Isle of Dogs
 Rush Hour
 Ran
 Everything Everywhere All At Once
@@ -80,10 +98,8 @@ Aguirre, the Wrath of God
 Harakiri
 Decision to Leave
 Late Shift
-Lolita
 Reservoir dogs
 Sympathy for Mr. Vengeance
-The Mist
 The Transporter
 Eastern Promises
 I’m a Cyborg, But That’s OK

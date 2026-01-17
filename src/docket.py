@@ -218,7 +218,12 @@ class DocketWheel:
 
     def spin(self):
         """Start the wheel spinning."""
-        self.angular_velocity = random.uniform(DOCKET_SPIN_MIN, DOCKET_SPIN_MAX)
+        # Randomize starting position each spin for more unpredictable results
+        self.angle = random.uniform(0, 2 * math.pi)
+        # Add more variability to spin speed - wider range and random multiplier
+        base_velocity = random.uniform(DOCKET_SPIN_MIN, DOCKET_SPIN_MAX)
+        velocity_multiplier = random.uniform(0.8, 1.3)  # Additional 20% variance either way
+        self.angular_velocity = base_velocity * velocity_multiplier
         self.spinning = True
         self.stopped = False
         if self.sound_manager:
