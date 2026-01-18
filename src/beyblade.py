@@ -370,9 +370,9 @@ def resolve_collision(b1: Beyblade, b2: Beyblade) -> tuple:
     w1 = b2.weight / total_weight
     w2 = b1.weight / total_weight
 
-    base_impulse = 6.0
-    speed_impulse = relative_speed * 1.8
-    attack_bonus = (b1.attack + b2.attack) * 0.12
+    base_impulse = 5.0  # Reduced from 6.0
+    speed_impulse = relative_speed * 1.2  # Reduced from 1.8 for softer hits
+    attack_bonus = (b1.attack + b2.attack) * 0.10  # Reduced from 0.12
     impulse = base_impulse + speed_impulse + attack_bonus
 
     # Calculate knockback multipliers for each beyblade
@@ -399,20 +399,20 @@ def resolve_collision(b1: Beyblade, b2: Beyblade) -> tuple:
         b2_dealt_mult *= 5.0
         triggers.append((b2.name, 'REVENGE!', ABILITIES['kill_bill']['color'], 'Kill Bill'))
 
-    # Little Miss Sunshine: immune to damage from red or green beyblades
+    # Little Miss Sunshine: no knockback from red or green beyblades (but still takes damage)
     def is_red_or_green(color):
         r, g, b = color
-        # Check if color is predominantly red (high R, low G and B)
-        is_red = r > 150 and r > g * 1.5 and r > b * 1.5
-        # Check if color is predominantly green (high G, low R and B)
-        is_green = g > 150 and g > r * 1.5 and g > b * 1.5
+        # Check if color is predominantly red (R is the dominant channel)
+        is_red = r > 120 and r > g and r > b and (r - max(g, b)) > 30
+        # Check if color is predominantly green (G is the dominant channel)
+        is_green = g > 120 and g > r and g > b and (g - max(r, b)) > 30
         return is_red or is_green
 
     if b1.ability == 'little_miss_sunshine' and is_red_or_green(b2.color):
-        b1_recv_mult = 0  # Immune to damage from b2
+        b1_recv_mult = 0  # No knockback from red/green (but damage still applies via other means)
         triggers.append((b1.name, 'Color blind!', ABILITIES['little_miss_sunshine']['color'], 'Little Miss Sunshine'))
     if b2.ability == 'little_miss_sunshine' and is_red_or_green(b1.color):
-        b2_recv_mult = 0  # Immune to damage from b1
+        b2_recv_mult = 0  # No knockback from red/green (but damage still applies via other means)
         triggers.append((b2.name, 'Color blind!', ABILITIES['little_miss_sunshine']['color'], 'Little Miss Sunshine'))
 
     # Luffy: bounces 2x harder (receives 2x knockback)

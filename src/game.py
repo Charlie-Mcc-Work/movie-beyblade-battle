@@ -158,11 +158,13 @@ class Game:
     def start_battle(self, movie_list: list):
         """Initialize a new tournament with the given movie list."""
         # Deduplicate movie list (preserve order, keep first occurrence)
+        # Case-insensitive and whitespace-tolerant
         seen = set()
         unique_movies = []
         for movie in movie_list:
-            if movie not in seen:
-                seen.add(movie)
+            normalized = movie.strip().lower()
+            if normalized not in seen:
+                seen.add(normalized)
                 unique_movies.append(movie)
         movie_list = unique_movies
 
@@ -231,11 +233,12 @@ class Game:
             # Create group names showing actual movie count in each group
             group_names = [f"Group {i+1} ({len(g)} movies)" for i, g in enumerate(self.preliminary_groups)]
 
-            # Assign abilities to the group beyblades
+            # Group beyblades get abilities just like regular beyblades
+            group_ability_pool = list(ABILITIES.keys())
+            random.shuffle(group_ability_pool)
             for i, group_name in enumerate(group_names):
-                ability_key = ability_pool[pool_index % len(ability_pool)]
-                pool_index += 1
                 color = BEYBLADE_COLORS[i % len(BEYBLADE_COLORS)]
+                ability_key = group_ability_pool[i % len(group_ability_pool)]
                 self.movie_abilities[group_name] = (ability_key, color)
 
             # Set up the preliminary battle with group beyblades
@@ -296,6 +299,12 @@ class Game:
         # Use rectangle finals arena for the deciding battle (not for preliminary rounds)
         is_final_battle = (self.is_finals or len(self.heats) == 1) and not self.is_preliminary
         self.arena.set_finals_mode(is_final_battle)
+
+        # Use smaller preliminary arena with pillars for the group stage
+        if self.is_preliminary and heat_index == 0:
+            self.arena.set_preliminary_mode(True)
+        elif not is_final_battle:
+            self.arena.set_preliminary_mode(False)
 
         self._spawn_beyblades(movies)
 
@@ -545,6 +554,10 @@ class Game:
             if self.input_screen.check_docket(mouse_pos, mouse_clicked):
                 self._start_docket_select()
 
+            # Check for Quit button click
+            if self.input_screen.check_quit(mouse_pos, mouse_clicked):
+                self.running = False
+
         elif self.state == STATE_BATTLE:
             self.battle_hud.update(mouse_pos)
             self.speed_multiplier = self.battle_hud.check_speed_click(mouse_pos, mouse_clicked)
@@ -675,10 +688,10 @@ class Game:
         # Update arena (bumper animations)
         self.arena.update()
 
-        # Interstellar: black holes pull ALL beyblades on the map (acts as new center)
+        # Interstellar: black holes pull ALL beyblades on the map (Batman immune)
         for black_hole in self.black_holes:
             for beyblade in self.beyblades:
-                if beyblade.alive and beyblade.name != black_hole['owner_name']:
+                if beyblade.alive and beyblade.name != black_hole['owner_name'] and beyblade.ability != 'batman':
                     dx = black_hole['x'] - beyblade.x
                     dy = black_hole['y'] - beyblade.y
                     dist = math.sqrt(dx * dx + dy * dy)
@@ -785,9 +798,9 @@ class Game:
         for beyblade in self.beyblades:
             if beyblade.explosive_triggered:
                 beyblade.explosive_triggered = False
-                # Push all alive beyblades away
+                # Push all alive beyblades away (Batman immune)
                 for other in self.beyblades:
-                    if other.alive and other != beyblade:
+                    if other.alive and other != beyblade and other.ability != 'batman':
                         dx = other.x - beyblade.x
                         dy = other.y - beyblade.y
                         dist = math.sqrt(dx**2 + dy**2)
@@ -947,9 +960,9 @@ class Game:
                 beyblade.vx = 0
                 beyblade.vy = 0
 
-        # Handle beyblades slipping on ice trails
+        # Handle beyblades slipping on ice trails (Batman immune)
         for beyblade in self.beyblades:
-            if beyblade.alive and beyblade.ice_frozen_timer <= 0:
+            if beyblade.alive and beyblade.ice_frozen_timer <= 0 and beyblade.ability != 'batman':
                 for trail in self.ice_trails:
                     dx = beyblade.x - trail['x']
                     dy = beyblade.y - trail['y']
@@ -1599,15 +1612,13 @@ class Game:
                             beyblade.alien_adult_bonus_applied = True
                         self.effects.spawn_ability_notification(beyblade.name, 'EMERGES!', ABILITIES['alien']['color'], 'ability', 'Alien')
 
-        # Amadeus: refuse to die while rival lives
+        # Amadeus: refuse to die while rival lives (use the flag computed earlier this frame)
         for beyblade in self.beyblades:
-            if beyblade.ability == 'amadeus' and beyblade.amadeus_rival:
-                rival = next((b for b in self.beyblades if b.name == beyblade.amadeus_rival), None)
-                if rival and rival.alive:
-                    if beyblade.stamina <= 0:
-                        beyblade.stamina = 1  # Refuse to die
-                        beyblade.alive = True
-                        beyblade.knockout_timer = 0
+            if beyblade.ability == 'amadeus' and beyblade.amadeus_rival_alive:
+                if beyblade.stamina <= 0:
+                    beyblade.stamina = 1  # Refuse to die
+                    beyblade.alive = True
+                    beyblade.knockout_timer = 0
 
         # Terminator: hunt target after 3s without being hit
         for beyblade in self.beyblades:
@@ -1848,27 +1859,38 @@ class Game:
             return 'ability'
         return 'ability'
 
+    def _get_base_movie_name(self, movie_name: str) -> str:
+        """Strip ability suffixes like (Double), (Clone X), (Fragment X) from movie name."""
+        import re
+        # Remove common suffixes added by abilities
+        base_name = re.sub(r'\s*\((Double|Clone \d+|Fragment \d+)\)\s*$', '', movie_name)
+        return base_name.strip()
+
     def _choose_movie(self, movie_name: str):
         """Move winner from movies.txt to watched.txt."""
+        # Get base name (strip ability suffixes)
+        base_name = self._get_base_movie_name(movie_name)
+
         # Read current movies
         movies = []
         if os.path.exists(MOVIE_LIST_FILE):
             with open(MOVIE_LIST_FILE, 'r') as f:
                 movies = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
 
-        # Remove the chosen movie
-        movies = [m for m in movies if m != movie_name]
+        # Remove the chosen movie (match base name case-insensitively)
+        base_lower = base_name.lower()
+        movies = [m for m in movies if m.strip().lower() != base_lower]
 
         # Write updated movies list
         with open(MOVIE_LIST_FILE, 'w') as f:
             f.write('\n'.join(movies))
 
-        # Add to watched list
+        # Add to watched list (use base name)
         watched = []
         if os.path.exists(WATCHED_FILE):
             with open(WATCHED_FILE, 'r') as f:
                 watched = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
-        watched.append(movie_name)
+        watched.append(base_name)
         with open(WATCHED_FILE, 'w') as f:
             f.write('\n'.join(watched))
 
@@ -1878,25 +1900,29 @@ class Game:
 
     def _queue_movie(self, movie_name: str):
         """Move winner from movies.txt to queue.txt and restart."""
+        # Get base name (strip ability suffixes)
+        base_name = self._get_base_movie_name(movie_name)
+
         # Read current movies
         movies = []
         if os.path.exists(MOVIE_LIST_FILE):
             with open(MOVIE_LIST_FILE, 'r') as f:
                 movies = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
 
-        # Remove the queued movie
-        movies = [m for m in movies if m != movie_name]
+        # Remove the queued movie (match base name case-insensitively)
+        base_lower = base_name.lower()
+        movies = [m for m in movies if m.strip().lower() != base_lower]
 
         # Write updated movies list
         with open(MOVIE_LIST_FILE, 'w') as f:
             f.write('\n'.join(movies))
 
-        # Add to queue list
+        # Add to queue list (use base name)
         queue = []
         if os.path.exists(QUEUE_FILE):
             with open(QUEUE_FILE, 'r') as f:
                 queue = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
-        queue.append(movie_name)
+        queue.append(base_name)
         with open(QUEUE_FILE, 'w') as f:
             f.write('\n'.join(queue))
 
@@ -2235,9 +2261,28 @@ class Game:
                 f.write(m + '\n')
 
     def _update_golden_docket(self, name: str, new_movie: str):
-        """Update a participant's golden docket pick."""
+        """Update a participant's golden docket pick and remove from movies/queue."""
         self.docket_data['golden'][name] = new_movie
         self._save_docket_file(GOLDEN_DOCKET_FILE, self.docket_data['golden'])
+
+        # Remove the movie from movies.txt if present
+        movie_lower = new_movie.strip().lower()
+        if os.path.exists(MOVIE_LIST_FILE):
+            with open(MOVIE_LIST_FILE, 'r') as f:
+                movies = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
+            movies = [m for m in movies if m.strip().lower() != movie_lower]
+            with open(MOVIE_LIST_FILE, 'w') as f:
+                f.write('\n'.join(movies))
+            # Reload the input screen text box
+            self.input_screen.text_box.load_from_file(MOVIE_LIST_FILE)
+
+        # Remove the movie from queue.txt if present
+        if os.path.exists(QUEUE_FILE):
+            with open(QUEUE_FILE, 'r') as f:
+                queue = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
+            queue = [m for m in queue if m.strip().lower() != movie_lower]
+            with open(QUEUE_FILE, 'w') as f:
+                f.write('\n'.join(queue))
 
     def _end_current_heat(self, survivors: list):
         """Handle end of a heat - advance winners or end tournament."""

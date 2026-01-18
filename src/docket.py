@@ -169,10 +169,10 @@ class DocketWheel:
             return
 
         # Golden and Diamond: One upgrade sliver after each entry, with random size
-        # Min: 1%, Max: 50/n_slivers % (so with 5 slivers, max is 10% each)
+        # Min: 1%, Max: 40/n_slivers % (so with 5 slivers, max is 8% each)
         n_slivers = n_entries
         min_sliver = 0.01  # 1%
-        max_sliver = 0.5 / n_slivers  # 50/n %
+        max_sliver = 0.4 / n_slivers  # 40/n %
 
         # Generate random size for each sliver
         for _ in range(n_slivers):
@@ -469,7 +469,7 @@ class DocketWheel:
             preview_random = random.Random(len(self.next_tier_entries) * 17 + 42)
             n_slivers = n_entries
             min_sliver = 0.01
-            max_sliver = 0.5 / n_slivers  # 50/n %
+            max_sliver = 0.4 / n_slivers  # 40/n %
 
             sliver_percents = [preview_random.uniform(min_sliver, max_sliver) for _ in range(n_slivers)]
             total_upgrade = sum(sliver_percents)
@@ -644,7 +644,7 @@ class DocketZoomTransition:
                 # Golden/Diamond: random sliver sizes
                 n_slivers = n_entries
                 min_sliver = 0.01
-                max_sliver = 0.5 / n_slivers  # 50/n %
+                max_sliver = 0.4 / n_slivers  # 40/n %
                 self.sliver_percents = [random.uniform(min_sliver, max_sliver) for _ in range(n_slivers)]
                 total_upgrade = sum(self.sliver_percents)
 

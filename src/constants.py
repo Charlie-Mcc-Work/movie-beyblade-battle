@@ -26,11 +26,11 @@ STAT_RANGES = {
 AVATAR_ABILITIES = ['fireball', 'ice', 'grenade', 'kamehameha', 'water', 'john_wick']
 
 # Physics
-MAX_SPEED = 18.0  # Faster beyblades
-FRICTION = 0.9975  # Less friction for more sustained speed
+MAX_SPEED = 24.0  # Even faster beyblades
+FRICTION = 0.998  # Slightly less friction for more sustained speed
 COLLISION_ELASTICITY = 0.6
 BASE_DAMAGE_MULTIPLIER = 0.5
-KNOCKBACK_FORCE = 1.2
+KNOCKBACK_FORCE = 0.85  # Reduced knockback so faster beyblades don't fly out constantly
 ARENA_SLOPE_STRENGTH = 0.28  # Bowl slope - creates orbital motion
 
 # Colors

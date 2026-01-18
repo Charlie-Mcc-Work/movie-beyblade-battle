@@ -1,1 +1,10 @@
+amadeus: 2
+berserker: 1
+doomsday: 1
+ice: 1
 little_miss_sunshine: 1
+shrinking: 1
+tiny: 1
+vampire: 1
+vengeance: 2
+venom: 1

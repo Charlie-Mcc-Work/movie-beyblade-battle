@@ -1,4 +1,4 @@
-Sanjuro
+Syanjuro
 The Human Condition Part 1
 Come and See
 For a Few Dollars More
@@ -7,7 +7,6 @@ Incendies
 Sunset Boulevard
 Memories of Murder
 It's a Wonderful Life
-Stalker
 Thief
 The Pianist
 The Voice of Hind Rajab
@@ -15,8 +14,7 @@ Happy as Lazzaro
 Lars and the Real Girl
 Dead Poets Society
 Children of Men
-Akira
-Dog Day Afternoon
+Marley and Me
 Fallen Angels
 Fargo
 Trespass
@@ -44,8 +42,6 @@ American History X
 Scarface
 Chicago
 Run Lola Run
-Donnie Darko
-The Pursuit of Happyness
 Bride of Frankenstein
 Poor Things
 The Killing of a Sacred Deer
@@ -57,8 +53,8 @@ Scent of a Woman
 Anatomy of a Murder
 Kwaidan
 Onibaba
+Con Air
 Army of Shadows
-Vertigo
 Trainspotting
 The Long Goodbye
 The Cook, The Thief, His Wife, and Her Lover
@@ -75,7 +71,6 @@ Cast Away
 Mr. & Mrs. Smith
 Jesus Christ Superstar
 The Trial of the Chicago 7
-They Live
 The Hurt Locker
 The Substance
 Midnight in Paris
@@ -83,9 +78,14 @@ Pretty Woman
 42
 Speed
 Sin City
-Alien3
 The Sixth Sense
+Aladdin
+Jurassic Park
+Psycho
+Sansho the Baliff
+Tokyo Story
 Spartacus
+Buffalo 66
 Rush Hour
 Ran
 Everything Everywhere All At Once
@@ -95,7 +95,6 @@ The Son of a Thousand Men
 Little Amélie or the Character of Rain
 Reptile
 Aguirre, the Wrath of God
-Harakiri
 Decision to Leave
 Late Shift
 Reservoir dogs
@@ -117,7 +116,167 @@ Lady Vengeance
 Honey Don’t!
 The Life of Chuck
 In the Name of the King: A Dungeon Siege Tale
-Throne of Blood
 Apocalypse Now
 Babylon
 Homebound
+Dial M for Murder
+Godzilla 1954
+The Killing
+The Bridge on the River Kwai
+The Cranes are Flying
+Crash
+Independence Day
+Office Space
+American Beauty
+Girl, Interrupted
+Fantasia 2000
+O Brother, Where Art Though?
+Requium for a Dream
+Charlie's Angels
+A.I. Artificial Intelligence
+The Cranes are Flying
+Witness for the Prosecution
+North by Northwest
+Ghost
+Edward Scissorhands
+Boyz n the Hood
+Barton Fink
+Thelma & Louise
+JFK
+Hard Boiled
+Malcolm X
+Robin Hood: Men in Tights
+Chungking Express
+Natural Born Killers
+Bad Boys
+Le Trou
+West Side Story
+Lawrence of Arabia
+Read Beard
+Andrei Rublev
+Bonnie and Clyde
+The Firemen's Ball
+Rosemary's Baby
+Kes
+M*A*S*H
+Investigation of a Citizen Above Suspicion
+A Clockwork Orange
+Dirty Harry
+Serpico
+The Exorcist
+Blazing Saddles
+Dersu Uzala
+Kagemusha
+The Hidden Fortress
+The Bad Sleep Well
+Taxi Driver
+Assault on Precinct 13
+Carrie
+Annie Hall
+Sorcerer
+Close Encounters of the Third Kind
+The Deer Hunter
+Manhattan
+The Shining
+The Elephant Man
+Raging Bull
+Blow Out
+The Evil Dead
+Conan the Barbarian
+The Thing
+Blade Runner
+The King of Comedy
+Risky Business
+Beverly Hills Cop
+After Hours
+Big Trouble in Little China
+Blue Velver
+The Mosquito Coast
+Raising Arizona
+Empire of the Sun
+The Fabelmans
+The Color Purple
+Spaceballs
+The Grave of the Fireflies
+Coming to America
+Rain Man
+Dune
+Dune II
+The Shawshank Redemption
+One Battle After Another
+No Other Choice
+Dr. Strangelove
+The Prestige
+The Fellowship of the Ring
+Full Metal Jacket
+The Martian
+Nuremburg
+Baby Driver
+Pearl
+The Imitation Game
+Scream 2
+The Whale
+Ocean's 11
+The Life of Pi
+Elvis
+Leave the World Behind
+Aftersun
+Into the Wild
+The Green Knight
+The Father
+Argyle
+Wolfwalkers
+Shaft
+The Lighthouse
+The Gorge
+The Favourite
+First Man
+War Dogs
+Burning
+American Sniper
+Gran Torino
+An Elephant Sitting Still
+Eighth Grade
+Poltergeist
+Alvin and the Chipmunks
+The Wailing
+Diary of a Wimpy Kid
+Demolition
+Twister
+A Silent Voice
+Swiss Army Man
+The Man From Uncle
+Atomic Blonde
+Wedding Crashers
+Ratatouille
+The Good Dinosaur
+Steve Jobs
+The Lobster
+Birdman
+Pitch Perfect
+The Raid
+Movie 43
+Lincoln
+The Place Beyond the Pines
+The Hunt
+127 Hours
+3 idiots
+Dogtooth
+7500
+Unbroken
+Mud
+Million Dollar Baby
+Saw
+The Butterfly Effect
+Once Upon a Time in Mexico
+21 Grams
+47 Ronin
+The Last Samurai
+Daredevil
+Upgrade
+25th Hour
+Bend it Like Beckham
+Barbershop
+Wolf of Wallstreet
+Mr. Deeds
+Training Day

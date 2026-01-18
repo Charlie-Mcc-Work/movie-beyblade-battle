@@ -81,6 +81,68 @@ class Bumper:
         pygame.draw.circle(screen, (200, 80, 40), (self.x, self.y), draw_radius, 3)
 
 
+class Pillar:
+    """Small pillar obstacle that blocks beyblades but doesn't push them."""
+
+    def __init__(self, x: int, y: int, radius: int = 20):
+        self.x = x
+        self.y = y
+        self.radius = radius
+        self.color = (80, 80, 90)  # Gray stone color
+        self.highlight_color = (120, 120, 130)
+
+    def check_collision(self, beyblade: Beyblade) -> bool:
+        """Check if beyblade is colliding with this pillar."""
+        dx = beyblade.x - self.x
+        dy = beyblade.y - self.y
+        dist = math.sqrt(dx**2 + dy**2)
+        return dist < (self.radius + beyblade.radius)
+
+    def apply_block(self, beyblade: Beyblade):
+        """Block the beyblade - push out without adding force."""
+        dx = beyblade.x - self.x
+        dy = beyblade.y - self.y
+        dist = math.sqrt(dx**2 + dy**2)
+
+        if dist == 0:
+            return
+
+        # Normalize direction away from pillar
+        nx = dx / dist
+        ny = dy / dist
+
+        # Push beyblade outside pillar (no overlap)
+        overlap = (self.radius + beyblade.radius) - dist
+        beyblade.x += nx * overlap
+        beyblade.y += ny * overlap
+
+        # Reflect velocity (elastic collision, no boost)
+        # Calculate velocity component toward pillar
+        dot = beyblade.vx * (-nx) + beyblade.vy * (-ny)
+        if dot > 0:  # Moving toward pillar
+            # Reflect with some energy loss
+            beyblade.vx += 2 * dot * nx * 0.7
+            beyblade.vy += 2 * dot * ny * 0.7
+
+    def update(self):
+        """Pillars don't animate."""
+        pass
+
+    def draw(self, screen: pygame.Surface):
+        """Draw the pillar."""
+        # Shadow
+        pygame.draw.circle(screen, (40, 40, 45), (self.x + 3, self.y + 3), self.radius + 2)
+
+        # Main body
+        pygame.draw.circle(screen, self.color, (self.x, self.y), self.radius)
+
+        # Inner highlight
+        pygame.draw.circle(screen, self.highlight_color, (self.x - 4, self.y - 4), self.radius // 3)
+
+        # Outer ring
+        pygame.draw.circle(screen, (60, 60, 70), (self.x, self.y), self.radius, 2)
+
+
 class ObeliskBumper:
     """2001-style monolith bumper - rectangular and black."""
 
@@ -204,7 +266,9 @@ class Arena:
         self.base_radius = ARENA_RADIUS
         self.radius = ARENA_RADIUS
         self.finals_mode = False
+        self.preliminary_mode = False
         self.bumpers: list[Bumper] = []
+        self.pillars: list[Pillar] = []
 
         # Rectangle dimensions for finals (calculated from radius)
         self._update_rect_dimensions()
@@ -214,7 +278,15 @@ class Arena:
         self.current_rect_left = self.rect_left
         self.current_rect_right = self.rect_right
         self.edges_closing = False
-        self.close_speed = 0.225  # Pixels per frame (1.5x faster)
+        self.close_speed = 0.6  # Pixels per frame
+        self.preliminary_scale = 0.7  # Preliminary arena is 70% the size
+
+    @property
+    def effective_radius(self) -> int:
+        """Get the effective arena radius (smaller in preliminary mode)."""
+        if self.preliminary_mode:
+            return int(self.radius * self.preliminary_scale)
+        return self.radius
 
     def _update_rect_dimensions(self):
         """Update rectangle dimensions based on current radius."""
@@ -233,6 +305,7 @@ class Arena:
     def set_finals_mode(self, enabled: bool):
         """Enable or disable finals rectangle mode."""
         self.finals_mode = enabled
+        self.preliminary_mode = False  # Finals and preliminary are mutually exclusive
         if enabled:
             self._create_bumpers()
             # Reset closing edges state
@@ -243,6 +316,41 @@ class Arena:
         else:
             self.bumpers.clear()
             self.edges_closing = False
+        self.pillars.clear()
+
+    def set_preliminary_mode(self, enabled: bool):
+        """Enable or disable preliminary mode (smaller arena with bumpers)."""
+        self.preliminary_mode = enabled
+        self.finals_mode = False  # Finals and preliminary are mutually exclusive
+        self.pillars.clear()
+        self.edges_closing = False
+        if enabled:
+            self._create_preliminary_bumpers()
+        else:
+            self.bumpers.clear()
+
+    def _create_pillars(self):
+        """Create 4 pillars for preliminary arena (legacy, not used)."""
+        self.pillars.clear()
+
+        cx, cy = self.center_x, self.center_y
+        # Use effective_radius (which is smaller in preliminary mode)
+        eff_r = self.effective_radius
+        # Pillars placed in a square pattern around the center
+        pillar_dist = eff_r * 0.5  # Distance from center
+        pillar_r = 22  # Pillar radius
+
+        # Four pillars at 45-degree angles
+        import math as m
+        angles = [m.pi / 4, 3 * m.pi / 4, 5 * m.pi / 4, 7 * m.pi / 4]
+        for angle in angles:
+            px = int(cx + m.cos(angle) * pillar_dist)
+            py = int(cy + m.sin(angle) * pillar_dist)
+            self.pillars.append(Pillar(px, py, pillar_r))
+
+    def _create_preliminary_bumpers(self):
+        """No bumpers in preliminary arena - just an open field."""
+        self.bumpers.clear()
 
     def _create_bumpers(self):
         """Create pinball bumpers for finals arena."""
@@ -281,9 +389,11 @@ class Arena:
         max_radius = min(window_width, window_height) // 2 - 80
         self.radius = max(200, max_radius)
         self._update_rect_dimensions()
-        # Recreate bumpers if in finals mode
+        # Recreate bumpers if in finals mode or preliminary mode
         if self.finals_mode:
             self._create_bumpers()
+        elif self.preliminary_mode:
+            self._create_preliminary_bumpers()
         return (self.center_x - old_center_x, self.center_y - old_center_y)
 
     def update(self):
@@ -310,13 +420,14 @@ class Arena:
 
         if self.finals_mode:
             self._apply_rectangle_boundary(beyblade)
-            # Check bumper collisions
-            for bumper in self.bumpers:
-                if bumper.check_collision(beyblade):
-                    bumper.apply_bounce(beyblade)
-                    bumper_hit = True
         else:
             self._apply_circle_boundary(beyblade)
+
+        # Check bumper collisions (both finals and preliminary modes use bumpers)
+        for bumper in self.bumpers:
+            if bumper.check_collision(beyblade):
+                bumper.apply_bounce(beyblade)
+                bumper_hit = True
 
         return bumper_hit
 
@@ -325,6 +436,7 @@ class Arena:
         dx = beyblade.x - self.center_x
         dy = beyblade.y - self.center_y
         dist_from_center = math.sqrt(dx**2 + dy**2)
+        arena_radius = self.effective_radius  # Use effective radius (smaller in preliminary mode)
 
         if dist_from_center == 0:
             return
@@ -334,7 +446,7 @@ class Arena:
         ny = dy / dist_from_center
 
         # Bowl physics: slope force toward center (Flash has 3x stronger pull)
-        edge_proximity = dist_from_center / self.radius
+        edge_proximity = dist_from_center / arena_radius
         slope_mult = 3.0 if beyblade.ability == 'flash' else 1.0
         slope_force = ARENA_SLOPE_STRENGTH * (edge_proximity ** 1.5) * slope_mult
 
@@ -352,20 +464,20 @@ class Arena:
             beyblade.vy += ty * tangent_force
 
         # Ring-out (Luffy gets 2 saves, Amadeus survives while rival lives)
-        if dist_from_center > self.radius:
+        if dist_from_center > arena_radius:
             if beyblade.ability == 'luffy' and beyblade.luffy_edge_saves > 0:
                 # Bounce back into arena
                 beyblade.luffy_edge_saves -= 1
-                beyblade.x = self.center_x + nx * (self.radius - beyblade.radius - 10)
-                beyblade.y = self.center_y + ny * (self.radius - beyblade.radius - 10)
+                beyblade.x = self.center_x + nx * (arena_radius - beyblade.radius - 10)
+                beyblade.y = self.center_y + ny * (arena_radius - beyblade.radius - 10)
                 # Reverse velocity and boost back in
                 beyblade.vx = -nx * 10
                 beyblade.vy = -ny * 10
             elif beyblade.ability == 'amadeus' and beyblade.amadeus_rival_alive:
                 # Amadeus refuses to die while rival lives - bounce at 1hp
                 beyblade.stamina = max(1, beyblade.stamina)
-                beyblade.x = self.center_x + nx * (self.radius - beyblade.radius - 10)
-                beyblade.y = self.center_y + ny * (self.radius - beyblade.radius - 10)
+                beyblade.x = self.center_x + nx * (arena_radius - beyblade.radius - 10)
+                beyblade.y = self.center_y + ny * (arena_radius - beyblade.radius - 10)
                 beyblade.vx = -nx * 8
                 beyblade.vy = -ny * 8
             else:
@@ -421,31 +533,33 @@ class Arena:
         """Draw the arena."""
         if self.finals_mode:
             self._draw_rectangle(screen)
-            # Draw bumpers on top of arena floor
-            for bumper in self.bumpers:
-                bumper.draw(screen)
         else:
             self._draw_circle(screen)
+
+        # Draw bumpers on top of arena floor (both finals and preliminary modes)
+        for bumper in self.bumpers:
+            bumper.draw(screen)
 
     def _draw_circle(self, screen: pygame.Surface):
         """Draw circular arena."""
         cx, cy = self.center_x, self.center_y
+        r = self.effective_radius  # Use effective radius (smaller in preliminary mode)
 
         # Outer rim shadow
-        pygame.draw.circle(screen, DARK_GRAY, (cx + 5, cy + 5), self.radius + 15)
+        pygame.draw.circle(screen, DARK_GRAY, (cx + 5, cy + 5), r + 15)
 
         # Outer rim
-        pygame.draw.circle(screen, ARENA_RIM, (cx, cy), self.radius + 15)
+        pygame.draw.circle(screen, ARENA_RIM, (cx, cy), r + 15)
 
         # Edge ring
-        pygame.draw.circle(screen, ARENA_EDGE, (cx, cy), self.radius + 5)
+        pygame.draw.circle(screen, ARENA_EDGE, (cx, cy), r + 5)
 
         # Main floor
-        pygame.draw.circle(screen, ARENA_FLOOR, (cx, cy), self.radius)
+        pygame.draw.circle(screen, ARENA_FLOOR, (cx, cy), r)
 
         # Floor detail rings
         for i in range(1, 6):
-            ring_radius = self.radius * (i / 6)
+            ring_radius = r * (i / 6)
             alpha = 30 + i * 5
             ring_color = tuple(min(255, c + alpha) for c in ARENA_FLOOR)
             pygame.draw.circle(screen, ring_color, (cx, cy), int(ring_radius), 1)
@@ -456,10 +570,10 @@ class Arena:
 
         # Highlight on rim
         highlight_rect = pygame.Rect(
-            cx - self.radius - 10,
-            cy - self.radius - 10,
-            (self.radius + 10) * 2,
-            (self.radius + 10) * 2
+            cx - r - 10,
+            cy - r - 10,
+            (r + 10) * 2,
+            (r + 10) * 2
         )
         pygame.draw.arc(screen, WHITE, highlight_rect, math.radians(200), math.radians(340), 3)
 
@@ -570,7 +684,7 @@ class Arena:
     def _get_circle_spawns(self, count: int) -> list:
         """Spawn positions for circular arena."""
         spawns = []
-        spawn_radius = self.radius * 0.6
+        spawn_radius = self.effective_radius * 0.6
 
         for i in range(count):
             angle = (2 * math.pi * i / count) + (math.pi / 4)
@@ -578,7 +692,7 @@ class Arena:
             x = self.center_x + math.cos(angle) * dist
             y = self.center_y + math.sin(angle) * dist
 
-            speed = 8 + (i % 4) * 1.5
+            speed = 14 + (i % 4) * 2  # Faster spawn velocity
             # Mix of tangential and inward velocity (60% tangent, 40% toward center)
             tangent_x = -math.sin(angle)
             tangent_y = math.cos(angle)
@@ -603,10 +717,10 @@ class Arena:
             # Alternate between left and right sides
             if i % 2 == 0:
                 x = left_x + (i % 4) * 20
-                vx = 7 + (i % 3) * 2  # Moving right
+                vx = 13 + (i % 3) * 2.5  # Moving right (faster)
             else:
                 x = right_x - (i % 4) * 20
-                vx = -(7 + (i % 3) * 2)  # Moving left
+                vx = -(13 + (i % 3) * 2.5)  # Moving left (faster)
 
             # Distribute vertically
             y_offset = ((i // 2) - (count // 4)) * 60
@@ -614,7 +728,7 @@ class Arena:
             # Keep within bounds
             y = max(self.rect_top + 50, min(self.rect_bottom - 50, y))
 
-            vy = ((i % 5) - 2) * 3  # Some vertical variation
+            vy = ((i % 5) - 2) * 5  # More vertical variation
 
             spawns.append((x, y, vx, vy))
 

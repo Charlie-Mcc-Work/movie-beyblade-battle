@@ -5,6 +5,7 @@ from .constants import (
     UI_BG, UI_PANEL, UI_ACCENT, UI_ACCENT_HOVER, UI_TEXT, UI_TEXT_DIM,
     VICTORY_GOLD, VICTORY_GLOW, WHITE, BLACK, SPEED_OPTIONS,
     MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE, ABILITY_WINS_FILE,
+    GOLDEN_DOCKET_FILE, DIAMOND_DOCKET_FILE, SHIT_DOCKET_FILE,
     DOCKET_GOLDEN, DOCKET_GOLDEN_DARK, DOCKET_DIAMOND, DOCKET_DIAMOND_DARK,
     DOCKET_SHIT, DOCKET_SHIT_DARK, ABILITIES
 )
@@ -41,7 +42,7 @@ class Button:
 
 
 class TextBox:
-    def __init__(self, x: int, y: int, width: int, height: int, font: pygame.font.Font):
+    def __init__(self, x: int, y: int, width: int, height: int, font: pygame.font.Font, save_path: str = None):
         self.rect = pygame.Rect(x, y, width, height)
         self.font = font
         self.text = ""
@@ -49,26 +50,176 @@ class TextBox:
         self.cursor_visible = True
         self.cursor_timer = 0
         self.scroll_offset = 0
+        self.save_path = save_path  # File to auto-save to
+        self._last_saved_text = ""  # Track changes for auto-save
+        self.cursor_line = 0  # Which line the cursor is on
+        self.cursor_pos = 0   # Position within the line
 
     def handle_event(self, event: pygame.event.Event):
         if event.type == pygame.MOUSEBUTTONDOWN:
+            was_active = self.active
             self.active = self.rect.collidepoint(event.pos)
+            # Click to position cursor
+            if self.active and event.button == 1:
+                self._click_to_cursor(event.pos)
+
+        # Mousewheel scrolling (works when hovering over text box)
+        if event.type == pygame.MOUSEWHEEL:
+            if self.rect.collidepoint(pygame.mouse.get_pos()):
+                lines = self.text.split('\n')
+                line_height = self.font.get_linesize()
+                max_visible = max(1, (self.rect.height - 20) // line_height)
+                max_scroll = max(0, len(lines) - max_visible)
+                # Scroll up (positive y) or down (negative y)
+                self.scroll_offset -= event.y * 3  # 3 lines per scroll
+                self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
 
         if event.type == pygame.KEYDOWN and self.active:
+            lines = self.text.split('\n')
+            text_changed = False
+
             if event.key == pygame.K_BACKSPACE:
-                self.text = self.text[:-1]
+                if self.cursor_pos > 0:
+                    # Delete character before cursor
+                    line = lines[self.cursor_line]
+                    lines[self.cursor_line] = line[:self.cursor_pos - 1] + line[self.cursor_pos:]
+                    self.cursor_pos -= 1
+                    text_changed = True
+                elif self.cursor_line > 0:
+                    # Merge with previous line
+                    prev_len = len(lines[self.cursor_line - 1])
+                    lines[self.cursor_line - 1] += lines[self.cursor_line]
+                    lines.pop(self.cursor_line)
+                    self.cursor_line -= 1
+                    self.cursor_pos = prev_len
+                    text_changed = True
+            elif event.key == pygame.K_DELETE:
+                line = lines[self.cursor_line]
+                if self.cursor_pos < len(line):
+                    lines[self.cursor_line] = line[:self.cursor_pos] + line[self.cursor_pos + 1:]
+                    text_changed = True
+                elif self.cursor_line < len(lines) - 1:
+                    # Merge with next line
+                    lines[self.cursor_line] += lines[self.cursor_line + 1]
+                    lines.pop(self.cursor_line + 1)
+                    text_changed = True
             elif event.key == pygame.K_RETURN:
-                self.text += "\n"
+                # Split line at cursor
+                line = lines[self.cursor_line]
+                lines[self.cursor_line] = line[:self.cursor_pos]
+                lines.insert(self.cursor_line + 1, line[self.cursor_pos:])
+                self.cursor_line += 1
+                self.cursor_pos = 0
+                text_changed = True
+            elif event.key == pygame.K_UP:
+                if self.cursor_line > 0:
+                    self.cursor_line -= 1
+                    self.cursor_pos = min(self.cursor_pos, len(lines[self.cursor_line]))
+                    self._ensure_cursor_visible()
+            elif event.key == pygame.K_DOWN:
+                if self.cursor_line < len(lines) - 1:
+                    self.cursor_line += 1
+                    self.cursor_pos = min(self.cursor_pos, len(lines[self.cursor_line]))
+                    self._ensure_cursor_visible()
+            elif event.key == pygame.K_LEFT:
+                if self.cursor_pos > 0:
+                    self.cursor_pos -= 1
+                elif self.cursor_line > 0:
+                    self.cursor_line -= 1
+                    self.cursor_pos = len(lines[self.cursor_line])
+                    self._ensure_cursor_visible()
+            elif event.key == pygame.K_RIGHT:
+                if self.cursor_pos < len(lines[self.cursor_line]):
+                    self.cursor_pos += 1
+                elif self.cursor_line < len(lines) - 1:
+                    self.cursor_line += 1
+                    self.cursor_pos = 0
+                    self._ensure_cursor_visible()
+            elif event.key == pygame.K_HOME:
+                self.cursor_pos = 0
+            elif event.key == pygame.K_END:
+                self.cursor_pos = len(lines[self.cursor_line])
             elif event.key == pygame.K_v and (event.mod & pygame.KMOD_CTRL):
                 # Paste from clipboard
                 try:
                     clipboard_text = pygame.scrap.get(pygame.SCRAP_TEXT)
                     if clipboard_text:
-                        self.text += clipboard_text.decode('utf-8').rstrip('\x00')
+                        paste_text = clipboard_text.decode('utf-8').rstrip('\x00')
+                        paste_lines = paste_text.split('\n')
+                        # Insert at cursor
+                        line = lines[self.cursor_line]
+                        if len(paste_lines) == 1:
+                            lines[self.cursor_line] = line[:self.cursor_pos] + paste_lines[0] + line[self.cursor_pos:]
+                            self.cursor_pos += len(paste_lines[0])
+                        else:
+                            # Multi-line paste
+                            after_cursor = line[self.cursor_pos:]
+                            lines[self.cursor_line] = line[:self.cursor_pos] + paste_lines[0]
+                            for i, paste_line in enumerate(paste_lines[1:-1], 1):
+                                lines.insert(self.cursor_line + i, paste_line)
+                            lines.insert(self.cursor_line + len(paste_lines) - 1, paste_lines[-1] + after_cursor)
+                            self.cursor_line += len(paste_lines) - 1
+                            self.cursor_pos = len(paste_lines[-1])
+                        text_changed = True
                 except:
                     pass
             elif event.unicode and event.unicode.isprintable():
-                self.text += event.unicode
+                # Insert character at cursor
+                line = lines[self.cursor_line]
+                lines[self.cursor_line] = line[:self.cursor_pos] + event.unicode + line[self.cursor_pos:]
+                self.cursor_pos += 1
+                text_changed = True
+
+            if text_changed:
+                self.text = '\n'.join(lines)
+                self._auto_save()
+
+    def _click_to_cursor(self, pos):
+        """Position cursor based on click location."""
+        lines = self.text.split('\n')
+        line_height = self.font.get_linesize()
+        padding = min(10, self.rect.height // 4)
+        text_area = self.rect.inflate(-padding * 2, -padding * 2)
+
+        # Determine which line was clicked
+        rel_y = pos[1] - text_area.top
+        clicked_line = self.scroll_offset + int(rel_y // line_height)
+        clicked_line = max(0, min(clicked_line, len(lines) - 1))
+        self.cursor_line = clicked_line
+
+        # Determine position within line
+        rel_x = pos[0] - text_area.left
+        line = lines[clicked_line] if clicked_line < len(lines) else ""
+        # Find closest character position
+        best_pos = 0
+        best_dist = abs(rel_x)
+        for i in range(1, len(line) + 1):
+            char_x = self.font.size(line[:i])[0]
+            dist = abs(rel_x - char_x)
+            if dist < best_dist:
+                best_dist = dist
+                best_pos = i
+        self.cursor_pos = best_pos
+
+    def _ensure_cursor_visible(self):
+        """Scroll to keep cursor visible."""
+        line_height = self.font.get_linesize()
+        max_visible = max(1, (self.rect.height - 20) // line_height)
+
+        if self.cursor_line < self.scroll_offset:
+            self.scroll_offset = self.cursor_line
+        elif self.cursor_line >= self.scroll_offset + max_visible:
+            self.scroll_offset = self.cursor_line - max_visible + 1
+
+    def _auto_save(self):
+        """Save to file if path is set and text changed."""
+        if self.save_path and self.text != self._last_saved_text:
+            try:
+                with open(self.save_path, 'w', encoding='utf-8') as f:
+                    f.write(self.text)
+                self._last_saved_text = self.text
+            except:
+                pass
 
     def update(self):
         self.cursor_timer += 1
@@ -84,38 +235,78 @@ class TextBox:
         border_color = UI_ACCENT if self.active else UI_TEXT_DIM
         pygame.draw.rect(screen, border_color, self.rect, 2, border_radius=4)
 
-        # Text area with padding (use smaller padding for short boxes)
+        # Text area with padding
         padding = min(10, self.rect.height // 4)
-        text_area = self.rect.inflate(-padding * 2, -padding * 2)
+        scrollbar_width = 12
+        text_area = pygame.Rect(
+            self.rect.left + padding,
+            self.rect.top + padding,
+            self.rect.width - padding * 2 - scrollbar_width,
+            self.rect.height - padding * 2
+        )
         lines = self.text.split('\n')
 
         # Calculate visible lines
         line_height = self.font.get_linesize()
         max_visible_lines = max(1, text_area.height // line_height)
+        total_lines = len(lines)
 
-        # Auto-scroll to show latest lines
-        if len(lines) > max_visible_lines:
-            self.scroll_offset = len(lines) - max_visible_lines
-        else:
-            self.scroll_offset = 0
+        # Clamp scroll offset
+        max_scroll = max(0, total_lines - max_visible_lines)
+        self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
 
         # Draw lines
         y = text_area.top
         for i, line in enumerate(lines[self.scroll_offset:]):
             if y + line_height > text_area.bottom:
                 break
-            text_surface = self.font.render(line[:80], True, txt)  # Truncate long lines
+            line_idx = self.scroll_offset + i
+            # Highlight current line slightly if active
+            if self.active and line_idx == self.cursor_line:
+                highlight_rect = pygame.Rect(text_area.left - 2, y, text_area.width + 4, line_height)
+                pygame.draw.rect(screen, (40, 45, 55), highlight_rect)
+            text_surface = self.font.render(line[:100], True, txt)  # Truncate long lines
             screen.blit(text_surface, (text_area.left, y))
             y += line_height
 
         # Cursor
         if self.active and self.cursor_visible:
-            cursor_x = text_area.left + self.font.size(lines[-1] if lines else "")[0]
-            cursor_y = min(text_area.top + (len(lines) - self.scroll_offset - 1) * line_height,
-                          text_area.bottom - line_height)
-            if cursor_y >= text_area.top:
+            if 0 <= self.cursor_line - self.scroll_offset < max_visible_lines:
+                line = lines[self.cursor_line] if self.cursor_line < len(lines) else ""
+                cursor_x = text_area.left + self.font.size(line[:self.cursor_pos])[0]
+                cursor_y = text_area.top + (self.cursor_line - self.scroll_offset) * line_height
                 pygame.draw.line(screen, txt, (cursor_x, cursor_y),
                                (cursor_x, cursor_y + line_height), 2)
+
+        # Draw scrollbar if needed
+        if total_lines > max_visible_lines:
+            scrollbar_rect = pygame.Rect(
+                self.rect.right - scrollbar_width - padding // 2,
+                self.rect.top + padding,
+                scrollbar_width - 4,
+                self.rect.height - padding * 2
+            )
+            # Track
+            pygame.draw.rect(screen, (30, 35, 45), scrollbar_rect, border_radius=3)
+
+            # Thumb
+            thumb_height = max(20, int(scrollbar_rect.height * (max_visible_lines / total_lines)))
+            thumb_pos = int((self.scroll_offset / max_scroll) * (scrollbar_rect.height - thumb_height)) if max_scroll > 0 else 0
+            thumb_rect = pygame.Rect(
+                scrollbar_rect.left,
+                scrollbar_rect.top + thumb_pos,
+                scrollbar_rect.width,
+                thumb_height
+            )
+            thumb_color = UI_ACCENT if self.active else (80, 90, 110)
+            pygame.draw.rect(screen, thumb_color, thumb_rect, border_radius=3)
+
+        # Movie count indicator
+        entry_count = len([l for l in lines if l.strip()])
+        count_text = f"{entry_count} movies"
+        count_surface = self.font.render(count_text, True, UI_TEXT_DIM)
+        count_rect = count_surface.get_rect(bottomright=(self.rect.right - padding, self.rect.bottom - 2))
+        screen.blit(count_surface, count_rect)
 
     def get_entries(self) -> list:
         """Parse text into list of movie titles."""
@@ -126,8 +317,13 @@ class TextBox:
     def load_from_file(self, filepath: str) -> bool:
         """Load text from file. Returns True if successful."""
         try:
-            with open(filepath, 'r') as f:
+            with open(filepath, 'r', encoding='utf-8') as f:
                 self.text = f.read()
+            self._last_saved_text = self.text  # Mark as saved
+            # Position cursor at end
+            lines = self.text.split('\n')
+            self.cursor_line = len(lines) - 1
+            self.cursor_pos = len(lines[-1]) if lines else 0
             return True
         except FileNotFoundError:
             return False
@@ -140,7 +336,7 @@ class InputScreen:
         self.window_height = WINDOW_HEIGHT
         center_x = WINDOW_WIDTH // 2
 
-        self.text_box = TextBox(center_x - 300, 150, 600, 450, fonts['small'])
+        self.text_box = TextBox(center_x - 300, 150, 600, 450, fonts['small'], save_path=MOVIE_LIST_FILE)
         if os.path.exists(MOVIE_LIST_FILE):
             self.text_box.load_from_file(MOVIE_LIST_FILE)
         self.battle_button = Button(center_x - 100, 630, 200, 50, "BATTLE!", fonts['medium'])
@@ -149,6 +345,10 @@ class InputScreen:
         self.docket_button = Button(20, WINDOW_HEIGHT - 70, 180, 50, "GOLDEN DOCKET", fonts['small'],
                                     color=DOCKET_GOLDEN_DARK, hover_color=DOCKET_GOLDEN)
 
+        # Quit button (bottom right)
+        self.quit_button = Button(WINDOW_WIDTH - 100, WINDOW_HEIGHT - 70, 80, 50, "QUIT", fonts['small'],
+                                  color=(100, 60, 60), hover_color=(150, 80, 80))
+
         self.error_message = ""
         self.error_timer = 0
 
@@ -156,6 +356,10 @@ class InputScreen:
         self.queue_items = []
         self.queue_rects = []  # Clickable areas for queue items
         self.load_queue()
+
+        # Docket picks display
+        self.docket_picks = {'golden': [], 'diamond': [], 'shit': []}
+        self.load_docket_picks()
 
     def update_layout(self, window_width: int, window_height: int):
         """Update positions based on new window size."""
@@ -175,6 +379,9 @@ class InputScreen:
         # Reposition docket button (bottom left)
         self.docket_button.rect = pygame.Rect(20, window_height - 70, 180, 50)
 
+        # Reposition quit button (bottom right)
+        self.quit_button.rect = pygame.Rect(window_width - 100, window_height - 70, 80, 50)
+
     def handle_event(self, event: pygame.event.Event):
         self.text_box.handle_event(event)
 
@@ -183,6 +390,7 @@ class InputScreen:
         self.text_box.update()
         self.battle_button.update(mouse_pos)
         self.docket_button.update(mouse_pos)
+        self.quit_button.update(mouse_pos)
 
         entries = self.text_box.get_entries()
         self.battle_button.enabled = len(entries) >= 2
@@ -195,6 +403,10 @@ class InputScreen:
     def check_docket(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
         """Check if docket button was clicked."""
         return self.docket_button.is_clicked(mouse_pos, mouse_clicked)
+
+    def check_quit(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        """Check if quit button was clicked."""
+        return self.quit_button.is_clicked(mouse_pos, mouse_clicked)
 
     def check_start(self, mouse_pos: tuple, mouse_clicked: bool) -> tuple:
         """Check if battle should start. Returns (should_start, movie_list)"""
@@ -217,6 +429,29 @@ class InputScreen:
                     self.queue_items = [line.strip() for line in lines if line.strip()]
             except:
                 pass
+
+    def load_docket_picks(self):
+        """Load docket picks from docket files."""
+        self.docket_picks = {'golden': [], 'diamond': [], 'shit': []}
+        docket_files = {
+            'golden': GOLDEN_DOCKET_FILE,
+            'diamond': DIAMOND_DOCKET_FILE,
+            'shit': SHIT_DOCKET_FILE
+        }
+        for docket_type, filepath in docket_files.items():
+            if os.path.exists(filepath):
+                try:
+                    with open(filepath, 'r') as f:
+                        lines = f.read().strip().split('\n')
+                        for line in lines:
+                            line = line.strip()
+                            if line and ' - ' in line:
+                                parts = line.split(' - ', 1)
+                                if len(parts) == 2:
+                                    name, movie = parts[0].strip(), parts[1].strip()
+                                    self.docket_picks[docket_type].append((name, movie))
+                except:
+                    pass
 
     def check_queue_click(self, mouse_pos: tuple, mouse_clicked: bool) -> str:
         """Check if a queue item was clicked. Returns the item name if clicked, None otherwise."""
@@ -282,13 +517,16 @@ class InputScreen:
         # Golden Docket button (bottom left)
         self.docket_button.draw(screen)
 
+        # Quit button (bottom right)
+        self.quit_button.draw(screen)
+
         # Queue panel on the right side
         if self.queue_items:
             panel_width = 300
             panel_x = self.window_width - panel_width - 20
             panel_y = 150
-            line_height = 36
-            max_items = min(8, len(self.queue_items))
+            line_height = 24
+            max_items = min(25, len(self.queue_items))
             panel_height = max_items * line_height + 60
 
             # Panel background
@@ -330,6 +568,75 @@ class InputScreen:
             if len(self.queue_items) > max_items:
                 more_text = self.fonts['tiny'].render(f"+{len(self.queue_items) - max_items} more...", True, UI_TEXT_DIM)
                 screen.blit(more_text, (panel_x + 10, item_y))
+
+        # Docket picks panel on the left side
+        self._draw_docket_picks(screen)
+
+    def _draw_docket_picks(self, screen: pygame.Surface):
+        """Draw the docket picks panel on the left side of the input screen."""
+        # Reload docket picks to get latest
+        self.load_docket_picks()
+
+        # Check if any docket has picks
+        total_picks = sum(len(picks) for picks in self.docket_picks.values())
+        if total_picks == 0:
+            return
+
+        panel_width = 280
+        panel_x = 20
+        panel_y = 150
+        line_height = 22
+
+        # Calculate panel height based on content
+        section_count = sum(1 for picks in self.docket_picks.values() if picks)
+        total_lines = total_picks + section_count  # entries + headers
+        panel_height = total_lines * line_height + 50
+
+        # Panel background
+        panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+        panel_surface.fill((40, 40, 55, 230))
+        screen.blit(panel_surface, (panel_x, panel_y))
+        pygame.draw.rect(screen, UI_ACCENT, (panel_x, panel_y, panel_width, panel_height), 2, border_radius=8)
+
+        # Title
+        title = self.fonts['medium'].render("DOCKET PICKS", True, UI_ACCENT)
+        screen.blit(title, (panel_x + 10, panel_y + 8))
+
+        # Draw each docket section
+        y = panel_y + 40
+        docket_colors = {
+            'golden': DOCKET_GOLDEN,
+            'diamond': DOCKET_DIAMOND,
+            'shit': DOCKET_SHIT
+        }
+        docket_names = {
+            'golden': 'GOLDEN',
+            'diamond': 'DIAMOND',
+            'shit': 'SHIT'
+        }
+
+        for docket_type in ['golden', 'diamond', 'shit']:
+            picks = self.docket_picks[docket_type]
+            if not picks:
+                continue
+
+            color = docket_colors[docket_type]
+            name = docket_names[docket_type]
+
+            # Section header
+            header = self.fonts['small'].render(f"{name}:", True, color)
+            screen.blit(header, (panel_x + 10, y))
+            y += line_height
+
+            # Picks in this docket
+            for person, movie in picks:
+                # Truncate if too long
+                display_person = person if len(person) <= 10 else person[:8] + ".."
+                display_movie = movie if len(movie) <= 18 else movie[:16] + ".."
+                entry_text = f"  {display_person}: {display_movie}"
+                entry = self.fonts['tiny'].render(entry_text, True, UI_TEXT)
+                screen.blit(entry, (panel_x + 10, y + 2))
+                y += line_height
 
 
 class BattleHUD:
