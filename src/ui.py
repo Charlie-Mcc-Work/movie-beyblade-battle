@@ -339,7 +339,11 @@ class InputScreen:
         self.text_box = TextBox(center_x - 300, 150, 600, 450, fonts['small'], save_path=MOVIE_LIST_FILE)
         if os.path.exists(MOVIE_LIST_FILE):
             self.text_box.load_from_file(MOVIE_LIST_FILE)
-        self.battle_button = Button(center_x - 100, 630, 200, 50, "BATTLE!", fonts['medium'])
+        self.battle_button = Button(center_x - 100, 620, 200, 50, "BATTLE!", fonts['medium'])
+
+        # Queue Battle button (below main battle button)
+        self.queue_battle_button = Button(center_x - 100, 680, 200, 40, "QUEUE BATTLE", fonts['small'],
+                                          color=(150, 100, 50), hover_color=(200, 150, 70))
 
         # Golden Docket button (bottom left)
         self.docket_button = Button(20, WINDOW_HEIGHT - 70, 180, 50, "GOLDEN DOCKET", fonts['small'],
@@ -372,9 +376,10 @@ class InputScreen:
         box_height = min(450, window_height - 250)
         self.text_box.rect = pygame.Rect(center_x - box_width // 2, 150, box_width, box_height)
 
-        # Reposition button
-        button_y = min(630, window_height - 170)
+        # Reposition buttons
+        button_y = min(620, window_height - 180)
         self.battle_button.rect = pygame.Rect(center_x - 100, button_y, 200, 50)
+        self.queue_battle_button.rect = pygame.Rect(center_x - 100, button_y + 60, 200, 40)
 
         # Reposition docket button (bottom left)
         self.docket_button.rect = pygame.Rect(20, window_height - 70, 180, 50)
@@ -389,11 +394,15 @@ class InputScreen:
         """Returns (should_start, movie_list)"""
         self.text_box.update()
         self.battle_button.update(mouse_pos)
+        self.queue_battle_button.update(mouse_pos)
         self.docket_button.update(mouse_pos)
         self.quit_button.update(mouse_pos)
 
         entries = self.text_box.get_entries()
         self.battle_button.enabled = len(entries) >= 2
+
+        # Queue battle button enabled if queue has at least 2 items
+        self.queue_battle_button.enabled = len(self.queue_items) >= 2
 
         if self.error_timer > 0:
             self.error_timer -= 1
@@ -416,6 +425,16 @@ class InputScreen:
                 return (True, entries)
             else:
                 self.error_message = "Need at least 2 movies!"
+                self.error_timer = 120
+        return (False, [])
+
+    def check_queue_battle(self, mouse_pos: tuple, mouse_clicked: bool) -> tuple:
+        """Check if queue battle should start. Returns (should_start, movie_list)"""
+        if self.queue_battle_button.is_clicked(mouse_pos, mouse_clicked):
+            if len(self.queue_items) >= 2:
+                return (True, self.queue_items.copy())
+            else:
+                self.error_message = "Need at least 2 movies in queue!"
                 self.error_timer = 120
         return (False, [])
 
@@ -493,8 +512,9 @@ class InputScreen:
         count_surface = self.fonts['small'].render(count_text, True, UI_TEXT_DIM)
         screen.blit(count_surface, (self.text_box.rect.left, self.text_box.rect.bottom + 10))
 
-        # Battle button
+        # Battle buttons
         self.battle_button.draw(screen)
+        self.queue_battle_button.draw(screen)
 
         # Error message
         if self.error_timer > 0 and self.error_message:
@@ -526,7 +546,7 @@ class InputScreen:
             panel_x = self.window_width - panel_width - 20
             panel_y = 150
             line_height = 24
-            max_items = min(25, len(self.queue_items))
+            max_items = min(50, len(self.queue_items))
             panel_height = max_items * line_height + 60
 
             # Panel background
@@ -992,6 +1012,9 @@ class LeaderboardScreen:
         # Ability wins leaderboard
         self.ability_wins = {}  # {ability_key: win_count}
 
+        # Flag to hide queue button (for queue battles)
+        self.hide_queue_button = False
+
     def update_layout(self, window_width: int, window_height: int):
         self.window_width = window_width
         self.window_height = window_height
@@ -1026,11 +1049,12 @@ class LeaderboardScreen:
             except:
                 pass
 
-    def set_rankings(self, winner: str, eliminated: list):
+    def set_rankings(self, winner: str, eliminated: list, is_queue_battle: bool = False):
         """Set rankings from winner (1st) and elimination order (last eliminated = 2nd)."""
         self.rankings = [winner] + list(reversed(eliminated))
         self.scroll_offset = 0
         self.winner_name = winner
+        self.hide_queue_button = is_queue_battle
         # Reload queue and ability wins
         self.load_queue()
         self.load_ability_wins()
@@ -1039,7 +1063,8 @@ class LeaderboardScreen:
         self.play_again_button.update(mouse_pos)
         self.quit_button.update(mouse_pos)
         self.choose_button.update(mouse_pos)
-        self.queue_button.update(mouse_pos)
+        if not self.hide_queue_button:
+            self.queue_button.update(mouse_pos)
 
     def handle_scroll(self, event: pygame.event.Event):
         if event.type == pygame.MOUSEWHEEL:
@@ -1057,6 +1082,8 @@ class LeaderboardScreen:
         return self.choose_button.is_clicked(mouse_pos, mouse_clicked)
 
     def check_queue(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        if self.hide_queue_button:
+            return False
         return self.queue_button.is_clicked(mouse_pos, mouse_clicked)
 
     def draw(self, screen: pygame.Surface):
@@ -1111,7 +1138,8 @@ class LeaderboardScreen:
 
         # Buttons
         self.choose_button.draw(screen)
-        self.queue_button.draw(screen)
+        if not self.hide_queue_button:
+            self.queue_button.draw(screen)
         self.play_again_button.draw(screen)
         self.quit_button.draw(screen)
 
@@ -1119,8 +1147,9 @@ class LeaderboardScreen:
         choose_label = self.fonts['tiny'].render("Watch this movie", True, UI_TEXT_DIM)
         screen.blit(choose_label, (self.choose_button.rect.centerx - choose_label.get_width() // 2, self.choose_button.rect.bottom + 5))
 
-        queue_label = self.fonts['tiny'].render("Add to queue, replay", True, UI_TEXT_DIM)
-        screen.blit(queue_label, (self.queue_button.rect.centerx - queue_label.get_width() // 2, self.queue_button.rect.bottom + 5))
+        if not self.hide_queue_button:
+            queue_label = self.fonts['tiny'].render("Add to queue, replay", True, UI_TEXT_DIM)
+            screen.blit(queue_label, (self.queue_button.rect.centerx - queue_label.get_width() // 2, self.queue_button.rect.bottom + 5))
 
         # Ability wins panel on the left side
         if self.ability_wins:

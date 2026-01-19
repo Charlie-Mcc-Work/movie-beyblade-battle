@@ -1,13 +1,10 @@
-Syanjuro
 The Human Condition Part 1
 Come and See
-For a Few Dollars More
-The Battle of Algiers
 Incendies
 Sunset Boulevard
+The Warriors
 Memories of Murder
 It's a Wonderful Life
-Thief
 The Pianist
 The Voice of Hind Rajab
 Happy as Lazzaro
@@ -51,18 +48,15 @@ A Serious Man
 Deliverance
 Scent of a Woman
 Anatomy of a Murder
-Kwaidan
 Onibaba
 Con Air
 Army of Shadows
 Trainspotting
 The Long Goodbye
-The Cook, The Thief, His Wife, and Her Lover
 Rashomon
 The Aviator
 First Blood
 Lady Bird
-Palestine 36
 Legally Blonde
 Titanic
 Total Recall
@@ -70,13 +64,11 @@ Anora
 Cast Away
 Mr. & Mrs. Smith
 Jesus Christ Superstar
-The Trial of the Chicago 7
 The Hurt Locker
 The Substance
 Midnight in Paris
 Pretty Woman
 42
-Speed
 Sin City
 The Sixth Sense
 Aladdin
@@ -87,15 +79,12 @@ Tokyo Story
 Spartacus
 Buffalo 66
 Rush Hour
-Ran
 Everything Everywhere All At Once
 Tron
 Gangs of New York
 The Son of a Thousand Men
 Little Amélie or the Character of Rain
-Reptile
 Aguirre, the Wrath of God
-Decision to Leave
 Late Shift
 Reservoir dogs
 Sympathy for Mr. Vengeance
@@ -115,7 +104,6 @@ Another Simple Favor
 Lady Vengeance
 Honey Don’t!
 The Life of Chuck
-In the Name of the King: A Dungeon Siege Tale
 Apocalypse Now
 Babylon
 Homebound
@@ -136,7 +124,6 @@ Charlie's Angels
 A.I. Artificial Intelligence
 The Cranes are Flying
 Witness for the Prosecution
-North by Northwest
 Ghost
 Edward Scissorhands
 Boyz n the Hood
@@ -164,7 +151,6 @@ A Clockwork Orange
 Dirty Harry
 Serpico
 The Exorcist
-Blazing Saddles
 Dersu Uzala
 Kagemusha
 The Hidden Fortress
@@ -176,11 +162,8 @@ Annie Hall
 Sorcerer
 Close Encounters of the Third Kind
 The Deer Hunter
-Manhattan
-The Shining
 The Elephant Man
 Raging Bull
-Blow Out
 The Evil Dead
 Conan the Barbarian
 The Thing
@@ -197,7 +180,6 @@ Empire of the Sun
 The Fabelmans
 The Color Purple
 Spaceballs
-The Grave of the Fireflies
 Coming to America
 Rain Man
 Dune
@@ -233,7 +215,6 @@ The Favourite
 First Man
 War Dogs
 Burning
-American Sniper
 Gran Torino
 An Elephant Sitting Still
 Eighth Grade
@@ -253,7 +234,6 @@ The Good Dinosaur
 Steve Jobs
 The Lobster
 Birdman
-Pitch Perfect
 The Raid
 Movie 43
 Lincoln
@@ -277,6 +257,4 @@ Upgrade
 25th Hour
 Bend it Like Beckham
 Barbershop
-Wolf of Wallstreet
-Mr. Deeds
 Training Day

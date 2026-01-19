@@ -76,6 +76,7 @@ class Game:
         self.winner = None
         self.round_number = 1
         self.ability_win_recorded = False  # Prevent double-recording ability wins
+        self.is_queue_battle = False  # True if battling queue.txt movies
 
         # Tournament state
         self.heats: list[list[str]] = []
@@ -317,7 +318,13 @@ class Game:
     def _spawn_beyblades(self, movie_list: list):
         """Spawn beyblades with positions and tangential velocities."""
         # Create a copy to shuffle for spawn positions without modifying original
-        movies_to_spawn = movie_list.copy()
+        # Defensive: deduplicate to prevent mystery duplicate spawns
+        seen = set()
+        movies_to_spawn = []
+        for movie in movie_list:
+            if movie not in seen:
+                seen.add(movie)
+                movies_to_spawn.append(movie)
         random.shuffle(movies_to_spawn)
         spawns = self.arena.get_spawn_positions(len(movies_to_spawn))
 
@@ -543,7 +550,14 @@ class Game:
             self.input_screen.update(mouse_pos)
             should_start, movie_list = self.input_screen.check_start(mouse_pos, mouse_clicked)
             if should_start:
+                self.is_queue_battle = False
                 self.start_battle(movie_list)
+
+            # Check for queue battle start
+            should_start_queue, queue_movies = self.input_screen.check_queue_battle(mouse_pos, mouse_clicked)
+            if should_start_queue:
+                self.is_queue_battle = True
+                self.start_battle(queue_movies)
 
             # Check for queue item click (to remove from queue)
             clicked_queue_item = self.input_screen.check_queue_click(mouse_pos, mouse_clicked)
@@ -608,22 +622,25 @@ class Game:
         elif self.state == STATE_VICTORY:
             self.victory_screen.update(mouse_pos)
             if self.victory_screen.check_leaderboard(mouse_pos, mouse_clicked):
-                self.leaderboard_screen.set_rankings(self.winner, self.all_eliminated)
+                self.leaderboard_screen.set_rankings(self.winner, self.all_eliminated, self.is_queue_battle)
                 self.state = STATE_LEADERBOARD
 
         elif self.state == STATE_LEADERBOARD:
             self.leaderboard_screen.update(mouse_pos)
             if self.leaderboard_screen.check_play_again(mouse_pos, mouse_clicked):
+                self.is_queue_battle = False
                 self.state = STATE_INPUT
             elif self.leaderboard_screen.check_quit(mouse_pos, mouse_clicked):
                 self.running = False
             elif self.leaderboard_screen.check_choose(mouse_pos, mouse_clicked):
-                # CHOOSE: Move winner from movies.txt to watched.txt
+                # CHOOSE: Move winner from movies.txt (or queue.txt) to watched.txt
                 self._choose_movie(self.winner)
+                self.is_queue_battle = False
                 self.state = STATE_INPUT
             elif self.leaderboard_screen.check_queue(mouse_pos, mouse_clicked):
                 # QUEUE: Move winner from movies.txt to queue.txt and restart
                 self._queue_movie(self.winner)
+                self.is_queue_battle = False
                 self.state = STATE_INPUT
 
         elif self.state == STATE_DOCKET_SELECT:
@@ -1867,23 +1884,26 @@ class Game:
         return base_name.strip()
 
     def _choose_movie(self, movie_name: str):
-        """Move winner from movies.txt to watched.txt."""
+        """Move winner from movies.txt (or queue.txt for queue battles) to watched.txt."""
         # Get base name (strip ability suffixes)
         base_name = self._get_base_movie_name(movie_name)
+        base_lower = base_name.lower()
 
-        # Read current movies
-        movies = []
-        if os.path.exists(MOVIE_LIST_FILE):
-            with open(MOVIE_LIST_FILE, 'r') as f:
-                movies = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
+        # Determine source file based on battle type
+        source_file = QUEUE_FILE if self.is_queue_battle else MOVIE_LIST_FILE
+
+        # Read current items from source
+        items = []
+        if os.path.exists(source_file):
+            with open(source_file, 'r') as f:
+                items = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
 
         # Remove the chosen movie (match base name case-insensitively)
-        base_lower = base_name.lower()
-        movies = [m for m in movies if m.strip().lower() != base_lower]
+        items = [m for m in items if m.strip().lower() != base_lower]
 
-        # Write updated movies list
-        with open(MOVIE_LIST_FILE, 'w') as f:
-            f.write('\n'.join(movies))
+        # Write updated list back to source
+        with open(source_file, 'w') as f:
+            f.write('\n'.join(items))
 
         # Add to watched list (use base name)
         watched = []
@@ -1894,9 +1914,10 @@ class Game:
         with open(WATCHED_FILE, 'w') as f:
             f.write('\n'.join(watched))
 
-        # Reload the input screen text box
+        # Reload the input screen text box and queue
         if os.path.exists(MOVIE_LIST_FILE):
             self.input_screen.text_box.load_from_file(MOVIE_LIST_FILE)
+        self.input_screen.load_queue()
 
     def _queue_movie(self, movie_name: str):
         """Move winner from movies.txt to queue.txt and restart."""
@@ -2340,8 +2361,16 @@ class Game:
             self.avatar_manager.sync_with_beyblades(self.beyblades, winner_name=self.winner)
             self.state = STATE_VICTORY
         else:
-            # Add survivors to heat winners
-            self.heat_winners.extend(survivor_names)
+            # Add survivors to heat winners (skip clones and fragments to prevent duplicates)
+            # When Naruto clones or Barbie fragments survive, only the original should advance
+            # Otherwise the clone/fragment would spawn AND the original would create new clones
+            for survivor in survivors:
+                if survivor.is_clone or survivor.barbie_is_fragment:
+                    continue  # Skip clones and fragments
+                # Defensive: also skip if name already in heat_winners (prevents mystery duplicates)
+                if survivor.name in self.heat_winners:
+                    continue
+                self.heat_winners.append(survivor.name)
 
             # Check if more heats remain
             if self.current_heat < len(self.heats) - 1:

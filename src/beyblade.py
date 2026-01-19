@@ -643,15 +643,18 @@ def resolve_collision(b1: Beyblade, b2: Beyblade) -> tuple:
         triggers.append((b2.name, 'Shrinking!', ABILITIES['shrinking']['color']))
 
     # Alien: juvenile enters first beyblade it hits
+    # When infecting, alien becomes hidden (alive=False) until it bursts out
     if b1.ability == 'alien' and b1.alien_is_juvenile and b1.alien_host is None:
         if b2.ability != 'batman':
             b1.alien_host = b2.name
             b1.alien_gestation_timer = 300  # 5 seconds
+            b1.alive = False  # Hide alien while gestating inside host
             triggers.append((b1.name, f'INFECTS {b2.name[:10]}!', ABILITIES['alien']['color'], 'Alien'))
     if b2.ability == 'alien' and b2.alien_is_juvenile and b2.alien_host is None:
         if b1.ability != 'batman':
             b2.alien_host = b1.name
             b2.alien_gestation_timer = 300  # 5 seconds
+            b2.alive = False  # Hide alien while gestating inside host
             triggers.append((b2.name, f'INFECTS {b1.name[:10]}!', ABILITIES['alien']['color'], 'Alien'))
 
     # Terminator: reset no-hit timer on collision
