@@ -1,9 +1,11 @@
 amadeus: 3
+andy_dufresne: 1
 batman: 2
 berserker: 2
 counter: 1
 doomsday: 1
 ferris_bueller: 2
+gambler: 1
 ice: 1
 little_miss_sunshine: 2
 marty_mauser: 1

@@ -49,7 +49,6 @@ Deliverance
 Scent of a Woman
 Anatomy of a Murder
 Onibaba
-Con Air
 Army of Shadows
 Trainspotting
 The Long Goodbye
@@ -57,11 +56,9 @@ Rashomon
 The Aviator
 First Blood
 Lady Bird
-Legally Blonde
 Titanic
 Total Recall
 Anora
-Cast Away
 Mr. & Mrs. Smith
 Jesus Christ Superstar
 The Hurt Locker
@@ -79,7 +76,6 @@ Tokyo Story
 Spartacus
 Buffalo 66
 Rush Hour
-Everything Everywhere All At Once
 Tron
 Gangs of New York
 The Son of a Thousand Men
@@ -102,8 +98,6 @@ Anatomy of a Fall
 Five Nights at Freddy
 Another Simple Favor
 Lady Vengeance
-Honey Don’t!
-The Life of Chuck
 Apocalypse Now
 Babylon
 Homebound
@@ -191,7 +185,6 @@ Dr. Strangelove
 The Prestige
 The Fellowship of the Ring
 Full Metal Jacket
-The Martian
 Nuremburg
 Baby Driver
 Pearl
@@ -219,7 +212,6 @@ Gran Torino
 An Elephant Sitting Still
 Eighth Grade
 Poltergeist
-Alvin and the Chipmunks
 The Wailing
 Diary of a Wimpy Kid
 Demolition
