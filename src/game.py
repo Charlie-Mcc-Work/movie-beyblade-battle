@@ -23,10 +23,12 @@ from .docket import DocketWheel, DocketZoomTransition
 class Game:
     def __init__(self):
         pygame.init()
-        pygame.scrap.init()
 
         # Make window resizable
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
+
+        # Scrap (clipboard) must be initialized after display
+        pygame.scrap.init()
         pygame.display.set_caption("Movie Beyblade Battle")
 
         # Get actual window size (may differ from requested due to WM)
