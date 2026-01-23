@@ -3,7 +3,6 @@ The Girl With the Dragon Tattoo
 The Wages of Fear
 The Master
 Fitzcarraldo
-Hilda Hurricane
 Lolita
 Kwaidan
 Isle of Dogs
@@ -30,3 +29,5 @@ The Shining
 Blow Out
 The Wolf of Wall Street
 Thief
+Spartacus
+The Warriors

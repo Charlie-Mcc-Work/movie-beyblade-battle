@@ -443,7 +443,7 @@ class InputScreen:
         self.queue_items = []
         if os.path.exists(QUEUE_FILE):
             try:
-                with open(QUEUE_FILE, 'r') as f:
+                with open(QUEUE_FILE, 'r', encoding='utf-8') as f:
                     lines = f.read().strip().split('\n')
                     self.queue_items = [line.strip() for line in lines if line.strip()]
             except:
@@ -460,7 +460,7 @@ class InputScreen:
         for docket_type, filepath in docket_files.items():
             if os.path.exists(filepath):
                 try:
-                    with open(filepath, 'r') as f:
+                    with open(filepath, 'r', encoding='utf-8') as f:
                         lines = f.read().strip().split('\n')
                         for line in lines:
                             line = line.strip()
@@ -486,7 +486,7 @@ class InputScreen:
         if movie_name in self.queue_items:
             self.queue_items.remove(movie_name)
             # Write updated queue to file
-            with open(QUEUE_FILE, 'w') as f:
+            with open(QUEUE_FILE, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(self.queue_items))
 
     def draw(self, screen: pygame.Surface):
@@ -1029,7 +1029,7 @@ class LeaderboardScreen:
         self.queue_items = []
         if os.path.exists(QUEUE_FILE):
             try:
-                with open(QUEUE_FILE, 'r') as f:
+                with open(QUEUE_FILE, 'r', encoding='utf-8') as f:
                     lines = f.read().strip().split('\n')
                     self.queue_items = [line.strip() for line in lines if line.strip()]
             except:
@@ -1040,7 +1040,7 @@ class LeaderboardScreen:
         self.ability_wins = {}
         if os.path.exists(ABILITY_WINS_FILE):
             try:
-                with open(ABILITY_WINS_FILE, 'r') as f:
+                with open(ABILITY_WINS_FILE, 'r', encoding='utf-8') as f:
                     for line in f:
                         line = line.strip()
                         if ':' in line:

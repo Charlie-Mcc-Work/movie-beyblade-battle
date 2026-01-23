@@ -2,7 +2,6 @@ The Human Condition Part 1
 Come and See
 Incendies
 Sunset Boulevard
-The Warriors
 Memories of Murder
 It's a Wonderful Life
 The Pianist
@@ -73,7 +72,6 @@ Jurassic Park
 Psycho
 Sansho the Baliff
 Tokyo Story
-Spartacus
 Buffalo 66
 Rush Hour
 Tron
@@ -248,5 +246,4 @@ Daredevil
 Upgrade
 25th Hour
 Bend it Like Beckham
-Barbershop
 Training Day

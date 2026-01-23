@@ -1897,23 +1897,23 @@ class Game:
         # Read current items from source
         items = []
         if os.path.exists(source_file):
-            with open(source_file, 'r') as f:
+            with open(source_file, 'r', encoding='utf-8') as f:
                 items = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
 
         # Remove the chosen movie (match base name case-insensitively)
         items = [m for m in items if m.strip().lower() != base_lower]
 
         # Write updated list back to source
-        with open(source_file, 'w') as f:
+        with open(source_file, 'w', encoding='utf-8') as f:
             f.write('\n'.join(items))
 
         # Add to watched list (use base name)
         watched = []
         if os.path.exists(WATCHED_FILE):
-            with open(WATCHED_FILE, 'r') as f:
+            with open(WATCHED_FILE, 'r', encoding='utf-8') as f:
                 watched = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
         watched.append(base_name)
-        with open(WATCHED_FILE, 'w') as f:
+        with open(WATCHED_FILE, 'w', encoding='utf-8') as f:
             f.write('\n'.join(watched))
 
         # Reload the input screen text box and queue
@@ -1929,7 +1929,7 @@ class Game:
         # Read current movies
         movies = []
         if os.path.exists(MOVIE_LIST_FILE):
-            with open(MOVIE_LIST_FILE, 'r') as f:
+            with open(MOVIE_LIST_FILE, 'r', encoding='utf-8') as f:
                 movies = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
 
         # Remove the queued movie (match base name case-insensitively)
@@ -1937,16 +1937,16 @@ class Game:
         movies = [m for m in movies if m.strip().lower() != base_lower]
 
         # Write updated movies list
-        with open(MOVIE_LIST_FILE, 'w') as f:
+        with open(MOVIE_LIST_FILE, 'w', encoding='utf-8') as f:
             f.write('\n'.join(movies))
 
         # Add to queue list (use base name)
         queue = []
         if os.path.exists(QUEUE_FILE):
-            with open(QUEUE_FILE, 'r') as f:
+            with open(QUEUE_FILE, 'r', encoding='utf-8') as f:
                 queue = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
         queue.append(base_name)
-        with open(QUEUE_FILE, 'w') as f:
+        with open(QUEUE_FILE, 'w', encoding='utf-8') as f:
             f.write('\n'.join(queue))
 
         # Reload the input screen text box and queue
@@ -1968,7 +1968,7 @@ class Game:
         ability_wins = {}
         if os.path.exists(ABILITY_WINS_FILE):
             try:
-                with open(ABILITY_WINS_FILE, 'r') as f:
+                with open(ABILITY_WINS_FILE, 'r', encoding='utf-8') as f:
                     for line in f:
                         line = line.strip()
                         if ':' in line:
@@ -1981,7 +1981,7 @@ class Game:
         ability_wins[ability_key] = ability_wins.get(ability_key, 0) + 1
 
         # Save updated ability wins
-        with open(ABILITY_WINS_FILE, 'w') as f:
+        with open(ABILITY_WINS_FILE, 'w', encoding='utf-8') as f:
             for ability, count in sorted(ability_wins.items()):
                 f.write(f"{ability}: {count}\n")
 
@@ -1990,7 +1990,7 @@ class Game:
         entries = {}
         if os.path.exists(filepath):
             try:
-                with open(filepath, 'r') as f:
+                with open(filepath, 'r', encoding='utf-8') as f:
                     for line in f.read().strip().split('\n'):
                         if ' - ' in line:
                             parts = line.split(' - ', 1)
@@ -2005,7 +2005,7 @@ class Game:
     def _save_docket_file(self, filepath: str, entries: dict):
         """Save docket entries to file."""
         lines = [f"{name} - {movie}" for name, movie in entries.items()]
-        with open(filepath, 'w') as f:
+        with open(filepath, 'w', encoding='utf-8') as f:
             f.write('\n'.join(lines))
 
     def _load_permanent_people(self) -> list:
@@ -2013,7 +2013,7 @@ class Game:
         people = []
         if os.path.exists(PERMANENT_PEOPLE_FILE):
             try:
-                with open(PERMANENT_PEOPLE_FILE, 'r') as f:
+                with open(PERMANENT_PEOPLE_FILE, 'r', encoding='utf-8') as f:
                     for line in f.read().strip().split('\n'):
                         name = line.strip()
                         if name:
@@ -2027,7 +2027,7 @@ class Game:
         counter = {}
         if os.path.exists(PEOPLE_COUNTER_FILE):
             try:
-                with open(PEOPLE_COUNTER_FILE, 'r') as f:
+                with open(PEOPLE_COUNTER_FILE, 'r', encoding='utf-8') as f:
                     for line in f.read().strip().split('\n'):
                         if ' - ' in line:
                             parts = line.split(' - ', 1)
@@ -2046,7 +2046,7 @@ class Game:
     def _save_people_counter(self, counter: dict):
         """Save people counter to file."""
         lines = [f"{name} - {count}" for name, count in counter.items()]
-        with open(PEOPLE_COUNTER_FILE, 'w') as f:
+        with open(PEOPLE_COUNTER_FILE, 'w', encoding='utf-8') as f:
             f.write('\n'.join(lines))
 
     def _remove_from_dockets(self, name: str):
@@ -2291,20 +2291,20 @@ class Game:
         # Remove the movie from movies.txt if present
         movie_lower = new_movie.strip().lower()
         if os.path.exists(MOVIE_LIST_FILE):
-            with open(MOVIE_LIST_FILE, 'r') as f:
+            with open(MOVIE_LIST_FILE, 'r', encoding='utf-8') as f:
                 movies = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
             movies = [m for m in movies if m.strip().lower() != movie_lower]
-            with open(MOVIE_LIST_FILE, 'w') as f:
+            with open(MOVIE_LIST_FILE, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(movies))
             # Reload the input screen text box
             self.input_screen.text_box.load_from_file(MOVIE_LIST_FILE)
 
         # Remove the movie from queue.txt if present
         if os.path.exists(QUEUE_FILE):
-            with open(QUEUE_FILE, 'r') as f:
+            with open(QUEUE_FILE, 'r', encoding='utf-8') as f:
                 queue = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
             queue = [m for m in queue if m.strip().lower() != movie_lower]
-            with open(QUEUE_FILE, 'w') as f:
+            with open(QUEUE_FILE, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(queue))
 
     def _end_current_heat(self, survivors: list):

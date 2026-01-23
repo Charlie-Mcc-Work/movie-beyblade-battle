@@ -2,14 +2,15 @@ amadeus: 3
 andy_dufresne: 1
 batman: 2
 berserker: 2
+copycat: 1
 counter: 1
 doomsday: 1
 ferris_bueller: 2
-gambler: 1
+gambler: 2
 ice: 1
 little_miss_sunshine: 2
 marty_mauser: 1
-mirror: 1
+mirror: 2
 oppenheimer: 1
 rage: 1
 shrinking: 2
@@ -17,5 +18,5 @@ the_obelisk: 1
 tiny: 2
 vampire: 2
 vengeance: 2
-venom: 2
+venom: 3
 zoro: 1
