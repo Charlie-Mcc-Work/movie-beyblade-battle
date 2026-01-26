@@ -7,11 +7,9 @@ from .constants import (
     WINDOW_WIDTH, WINDOW_HEIGHT, FPS, UI_BG, WHITE, LIGHT_BLUE,
     STATE_INPUT, STATE_BATTLE, STATE_HEAT_TRANSITION, STATE_VICTORY, STATE_LEADERBOARD,
     STATE_DOCKET_SELECT, STATE_DOCKET_SPIN, STATE_DOCKET_RESULT, STATE_DOCKET_ZOOM,
-    BEYBLADE_COLORS, ABILITY_CHANCE, ABILITIES, ARENA_RADIUS, AVATAR_ABILITIES,
-    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE, SEQUEL_FILE, ABILITY_WINS_FILE, ABILITY_STATS_FILE,
-    GOLDEN_DOCKET_FILE, DIAMOND_DOCKET_FILE, SHIT_DOCKET_FILE,
-    PERMANENT_PEOPLE_FILE, PEOPLE_COUNTER_FILE
+    BEYBLADE_COLORS, ABILITY_CHANCE, ABILITIES, ARENA_RADIUS, AVATAR_ABILITIES
 )
+from .config import get_config, ModeConfig
 from .beyblade import Beyblade, check_collision, resolve_collision
 from .arena import Arena
 from .effects import EffectsManager
@@ -22,8 +20,11 @@ from .docket import DocketWheel, DocketZoomTransition
 
 
 class Game:
-    def __init__(self, web_mode=False):
+    def __init__(self, config=None, web_mode=False):
         pygame.init()
+
+        # Mode configuration
+        self.config = config if config else get_config()
 
         # Web mode flag for streaming to browsers
         self.web_mode = web_mode
@@ -53,11 +54,11 @@ class Game:
         self.effects = EffectsManager()
         self.avatar_manager = AvatarManager()
 
-        self.input_screen = InputScreen(self.fonts)
-        self.battle_hud = BattleHUD(self.fonts)
-        self.heat_transition_screen = HeatTransitionScreen(self.fonts)
-        self.victory_screen = VictoryScreen(self.fonts)
-        self.leaderboard_screen = LeaderboardScreen(self.fonts)
+        self.input_screen = InputScreen(self.fonts, self.config)
+        self.battle_hud = BattleHUD(self.fonts, self.config)
+        self.heat_transition_screen = HeatTransitionScreen(self.fonts, self.config)
+        self.victory_screen = VictoryScreen(self.fonts, self.config)
+        self.leaderboard_screen = LeaderboardScreen(self.fonts, self.config)
 
         # Docket screens (initialized when needed)
         self.participant_select_screen = None
@@ -2003,11 +2004,11 @@ class Game:
 
         # Determine source file based on battle type
         if self.is_queue_battle:
-            source_file = QUEUE_FILE
+            source_file = self.config.queue_file
         elif self.is_sequel_battle:
-            source_file = SEQUEL_FILE
+            source_file = self.config.sequel_file
         else:
-            source_file = MOVIE_LIST_FILE
+            source_file = self.config.movie_file
 
         # Read current items from source
         items = []
@@ -2024,16 +2025,16 @@ class Game:
 
         # Add to watched list (use base name)
         watched = []
-        if os.path.exists(WATCHED_FILE):
-            with open(WATCHED_FILE, 'r', encoding='utf-8') as f:
+        if os.path.exists(self.config.watched_file):
+            with open(self.config.watched_file, 'r', encoding='utf-8') as f:
                 watched = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
         watched.append(base_name)
-        with open(WATCHED_FILE, 'w', encoding='utf-8') as f:
+        with open(self.config.watched_file, 'w', encoding='utf-8') as f:
             f.write('\n'.join(watched))
 
         # Reload the input screen text box, queue, and sequels
-        if os.path.exists(MOVIE_LIST_FILE):
-            self.input_screen.text_box.load_from_file(MOVIE_LIST_FILE)
+        if os.path.exists(self.config.movie_file):
+            self.input_screen.text_box.load_from_file(self.config.movie_file)
         self.input_screen.load_queue()
         self.input_screen.load_sequels()
 
@@ -2044,8 +2045,8 @@ class Game:
 
         # Read current movies
         movies = []
-        if os.path.exists(MOVIE_LIST_FILE):
-            with open(MOVIE_LIST_FILE, 'r', encoding='utf-8') as f:
+        if os.path.exists(self.config.movie_file):
+            with open(self.config.movie_file, 'r', encoding='utf-8') as f:
                 movies = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
 
         # Remove the queued movie (match base name case-insensitively)
@@ -2053,21 +2054,21 @@ class Game:
         movies = [m for m in movies if m.strip().lower() != base_lower]
 
         # Write updated movies list
-        with open(MOVIE_LIST_FILE, 'w', encoding='utf-8') as f:
+        with open(self.config.movie_file, 'w', encoding='utf-8') as f:
             f.write('\n'.join(movies))
 
         # Add to queue list (use base name)
         queue = []
-        if os.path.exists(QUEUE_FILE):
-            with open(QUEUE_FILE, 'r', encoding='utf-8') as f:
+        if os.path.exists(self.config.queue_file):
+            with open(self.config.queue_file, 'r', encoding='utf-8') as f:
                 queue = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
         queue.append(base_name)
-        with open(QUEUE_FILE, 'w', encoding='utf-8') as f:
+        with open(self.config.queue_file, 'w', encoding='utf-8') as f:
             f.write('\n'.join(queue))
 
         # Reload the input screen text box and queue
-        if os.path.exists(MOVIE_LIST_FILE):
-            self.input_screen.text_box.load_from_file(MOVIE_LIST_FILE)
+        if os.path.exists(self.config.movie_file):
+            self.input_screen.text_box.load_from_file(self.config.movie_file)
         self.input_screen.load_queue()
 
     def _record_ability_win(self, winner_name: str):
@@ -2082,9 +2083,9 @@ class Game:
 
         # Load current ability wins
         ability_wins = {}
-        if os.path.exists(ABILITY_WINS_FILE):
+        if os.path.exists(self.config.ability_wins_file):
             try:
-                with open(ABILITY_WINS_FILE, 'r', encoding='utf-8') as f:
+                with open(self.config.ability_wins_file, 'r', encoding='utf-8') as f:
                     for line in f:
                         line = line.strip()
                         if ':' in line:
@@ -2097,16 +2098,16 @@ class Game:
         ability_wins[ability_key] = ability_wins.get(ability_key, 0) + 1
 
         # Save updated ability wins
-        with open(ABILITY_WINS_FILE, 'w', encoding='utf-8') as f:
+        with open(self.config.ability_wins_file, 'w', encoding='utf-8') as f:
             for ability, count in sorted(ability_wins.items()):
                 f.write(f"{ability}: {count}\n")
 
     def _load_ability_stats(self):
         """Load ability stats from file. Format: ability|tournament_wins|heat_wins|heats_participated"""
         ability_stats = {}
-        if os.path.exists(ABILITY_STATS_FILE):
+        if os.path.exists(self.config.ability_stats_file):
             try:
-                with open(ABILITY_STATS_FILE, 'r', encoding='utf-8') as f:
+                with open(self.config.ability_stats_file, 'r', encoding='utf-8') as f:
                     for line in f:
                         line = line.strip()
                         if '|' in line:
@@ -2124,7 +2125,7 @@ class Game:
 
     def _save_ability_stats(self, ability_stats):
         """Save ability stats to file."""
-        with open(ABILITY_STATS_FILE, 'w', encoding='utf-8') as f:
+        with open(self.config.ability_stats_file, 'w', encoding='utf-8') as f:
             for ability in sorted(ability_stats.keys()):
                 stats = ability_stats[ability]
                 f.write(f"{ability}|{stats['tournament_wins']}|{stats['heat_wins']}|{stats['heats_participated']}\n")
@@ -2170,6 +2171,8 @@ class Game:
     def _load_docket_file(self, filepath: str) -> dict:
         """Load docket entries from file. Returns {name: movie} dict."""
         entries = {}
+        if filepath is None:
+            return entries
         if os.path.exists(filepath):
             try:
                 with open(filepath, 'r', encoding='utf-8') as f:
@@ -2186,17 +2189,27 @@ class Game:
 
     def _save_docket_file(self, filepath: str, entries: dict):
         """Save docket entries to file."""
+        if filepath is None:
+            return
         lines = [f"{name} - {movie}" for name, movie in entries.items()]
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write('\n'.join(lines))
 
     def _load_permanent_people(self) -> list:
-        """Load permanent people list from file."""
+        """Load permanent people list from file or config."""
+        # If config has fixed permanent members (girlfriend mode), use those
+        if self.config.permanent_members:
+            print(f"[Load] Using config permanent members: {self.config.permanent_members}")
+            return self.config.permanent_members.copy()
+
         people = []
-        print(f"[Load] Checking for permanent people file: {PERMANENT_PEOPLE_FILE} (exists: {os.path.exists(PERMANENT_PEOPLE_FILE)})")
-        if os.path.exists(PERMANENT_PEOPLE_FILE):
+        if self.config.permanent_people_file is None:
+            return people
+
+        print(f"[Load] Checking for permanent people file: {self.config.permanent_people_file} (exists: {os.path.exists(self.config.permanent_people_file)})")
+        if os.path.exists(self.config.permanent_people_file):
             try:
-                with open(PERMANENT_PEOPLE_FILE, 'r', encoding='utf-8') as f:
+                with open(self.config.permanent_people_file, 'r', encoding='utf-8') as f:
                     content = f.read()
                     print(f"[Load] Raw file content: {repr(content[:200])}")
                     for line in content.strip().split('\n'):
@@ -2207,15 +2220,15 @@ class Game:
             except Exception as e:
                 print(f"Error loading permanent people: {e}")
         else:
-            print(f"Permanent people file not found: {PERMANENT_PEOPLE_FILE} (cwd: {os.getcwd()})")
+            print(f"Permanent people file not found: {self.config.permanent_people_file} (cwd: {os.getcwd()})")
         return people
 
     def _load_people_counter(self) -> dict:
         """Load people counter from file. Returns {name: count} dict."""
         counter = {}
-        if os.path.exists(PEOPLE_COUNTER_FILE):
+        if os.path.exists(self.config.people_counter_file):
             try:
-                with open(PEOPLE_COUNTER_FILE, 'r', encoding='utf-8') as f:
+                with open(self.config.people_counter_file, 'r', encoding='utf-8') as f:
                     for line in f.read().strip().split('\n'):
                         if ' - ' in line:
                             parts = line.split(' - ', 1)
@@ -2234,38 +2247,51 @@ class Game:
     def _save_people_counter(self, counter: dict):
         """Save people counter to file."""
         lines = [f"{name} - {count}" for name, count in counter.items()]
-        with open(PEOPLE_COUNTER_FILE, 'w', encoding='utf-8') as f:
+        with open(self.config.people_counter_file, 'w', encoding='utf-8') as f:
             f.write('\n'.join(lines))
 
     def _remove_from_dockets(self, name: str):
         """Remove a person from all docket files."""
-        for docket_type in ['golden', 'diamond', 'shit']:
+        docket_types = ['golden', 'diamond']
+        if self.config.has_shit_docket:
+            docket_types.append('shit')
+        for docket_type in docket_types:
             if name in self.docket_data[docket_type]:
                 del self.docket_data[docket_type][name]
         # Save updated docket files
-        self._save_docket_file(GOLDEN_DOCKET_FILE, self.docket_data['golden'])
-        self._save_docket_file(DIAMOND_DOCKET_FILE, self.docket_data['diamond'])
-        self._save_docket_file(SHIT_DOCKET_FILE, self.docket_data['shit'])
+        self._save_docket_file(self.config.golden_docket_file, self.docket_data['golden'])
+        self._save_docket_file(self.config.diamond_docket_file, self.docket_data['diamond'])
+        if self.config.has_shit_docket:
+            self._save_docket_file(self.config.shit_docket_file, self.docket_data['shit'])
 
     def _add_graduation_picks(self, name: str, picks: dict):
         """Add a graduating person's docket picks."""
         self.docket_data['golden'][name] = picks['golden']
         self.docket_data['diamond'][name] = picks['diamond']
-        self.docket_data['shit'][name] = picks['shit']
+        if self.config.has_shit_docket:
+            self.docket_data['shit'][name] = picks['shit']
         # Save updated docket files
-        self._save_docket_file(GOLDEN_DOCKET_FILE, self.docket_data['golden'])
-        self._save_docket_file(DIAMOND_DOCKET_FILE, self.docket_data['diamond'])
-        self._save_docket_file(SHIT_DOCKET_FILE, self.docket_data['shit'])
+        self._save_docket_file(self.config.golden_docket_file, self.docket_data['golden'])
+        self._save_docket_file(self.config.diamond_docket_file, self.docket_data['diamond'])
+        if self.config.has_shit_docket:
+            self._save_docket_file(self.config.shit_docket_file, self.docket_data['shit'])
 
     def _start_docket_select(self):
         """Start the docket participant selection screen."""
         print(f"[Docket] _start_docket_select called, cwd={os.getcwd()}")
 
         # Load all docket files
-        self.docket_data['golden'] = self._load_docket_file(GOLDEN_DOCKET_FILE)
-        self.docket_data['diamond'] = self._load_docket_file(DIAMOND_DOCKET_FILE)
-        self.docket_data['shit'] = self._load_docket_file(SHIT_DOCKET_FILE)
+        self.docket_data['golden'] = self._load_docket_file(self.config.golden_docket_file)
+        self.docket_data['diamond'] = self._load_docket_file(self.config.diamond_docket_file)
+        self.docket_data['shit'] = self._load_docket_file(self.config.shit_docket_file)
         print(f"[Docket] Loaded docket files - golden: {len(self.docket_data['golden'])} entries")
+
+        # In girlfriend mode, skip participant selection and go straight to spin
+        if self.config.permanent_members and not self.config.can_add_members:
+            print(f"[Docket] Girlfriend mode - skipping participant selection")
+            self.docket_participants = self.config.permanent_members.copy()
+            self._start_docket_spin_direct()
+            return
 
         # Load permanent people and people counter
         permanent_people = self._load_permanent_people()
@@ -2291,6 +2317,45 @@ class Game:
         self.participant_select_screen.update_layout(self.window_width, self.window_height)
         self.state = STATE_DOCKET_SELECT
         print(f"[Docket] State set to STATE_DOCKET_SELECT")
+
+    def _start_docket_spin_direct(self):
+        """Start the wheel spin directly (for girlfriend mode - no participant selection)."""
+        print(f"[Docket] _start_docket_spin_direct called with participants: {self.docket_participants}")
+
+        if not self.docket_participants:
+            print(f"[Docket] No participants, returning to input")
+            self.state = STATE_INPUT
+            return
+
+        # Start with golden docket
+        self.current_docket_type = 'golden'
+
+        # Build entries list for the wheel
+        entries = []
+        for name in self.docket_participants:
+            if name in self.docket_data['golden']:
+                entries.append((name, self.docket_data['golden'][name]))
+
+        if not entries:
+            print(f"[Docket] No entries found for participants in golden docket, returning to input")
+            self.state = STATE_INPUT
+            return
+
+        # Build next tier entries for preview (diamond docket)
+        next_tier_entries = []
+        for name in self.docket_participants:
+            if name in self.docket_data['diamond']:
+                next_tier_entries.append((name, self.docket_data['diamond'][name]))
+
+        # Create the wheel
+        center = (self.window_width // 2, self.window_height // 2)
+        radius = min(self.window_width, self.window_height) // 2 - 100
+        wheel = DocketWheel(entries, 'golden', self.fonts, center, radius, self.effects.sound,
+                           next_tier_entries=next_tier_entries if next_tier_entries else None)
+
+        self.docket_spin_screen.set_wheel(wheel)
+        self.state = STATE_DOCKET_SPIN
+        print(f"[Docket] Started golden docket spin directly")
 
     def _start_docket_spin(self):
         """Start the wheel spin with selected participants."""
@@ -2379,7 +2444,11 @@ class Game:
         if self.current_docket_type == 'golden':
             next_type = 'diamond'
         elif self.current_docket_type == 'diamond':
-            next_type = 'shit'
+            # In girlfriend mode (diamond_sliver_to_final_wheel), skip shit and go to final
+            if self.config.diamond_sliver_to_final_wheel:
+                next_type = 'final'
+            else:
+                next_type = 'shit'
         elif self.current_docket_type == 'shit':
             next_type = 'final'
         else:
@@ -2403,15 +2472,17 @@ class Game:
         # Update current docket type
         self.current_docket_type = next_type
 
-        # Build next-next tier entries for preview (shit docket if going to diamond)
+        # Build next-next tier entries for preview
         next_next_entries = None
         if next_type == 'diamond':
-            next_next_entries = []
-            for name in self.docket_participants:
-                if name in self.docket_data['shit']:
-                    next_next_entries.append((name, self.docket_data['shit'][name]))
-            if not next_next_entries:
-                next_next_entries = None
+            # In girlfriend mode, diamond goes to final, so no next-next preview
+            if not self.config.diamond_sliver_to_final_wheel:
+                next_next_entries = []
+                for name in self.docket_participants:
+                    if name in self.docket_data['shit']:
+                        next_next_entries.append((name, self.docket_data['shit'][name]))
+                if not next_next_entries:
+                    next_next_entries = None
 
         # Create zoom transition
         center = (self.window_width // 2, self.window_height // 2)
@@ -2440,23 +2511,23 @@ class Game:
 
         # Load from movies.txt
         try:
-            with open(MOVIE_LIST_FILE, 'r', encoding='utf-8') as f:
+            with open(self.config.movie_file, 'r', encoding='utf-8') as f:
                 for line in f:
                     movie = line.strip()
                     if movie:
                         entries.append(("Movies", movie))
-                        self.final_wheel_sources[movie] = MOVIE_LIST_FILE
+                        self.final_wheel_sources[movie] = self.config.movie_file
         except FileNotFoundError:
             pass
 
         # Load from queue.txt
         try:
-            with open(QUEUE_FILE, 'r', encoding='utf-8') as f:
+            with open(self.config.queue_file, 'r', encoding='utf-8') as f:
                 for line in f:
                     movie = line.strip()
                     if movie:
                         entries.append(("Queue", movie))
-                        self.final_wheel_sources[movie] = QUEUE_FILE
+                        self.final_wheel_sources[movie] = self.config.queue_file
         except FileNotFoundError:
             pass
 
@@ -2488,25 +2559,25 @@ class Game:
     def _update_golden_docket(self, name: str, new_movie: str):
         """Update a participant's golden docket pick and remove from movies/queue."""
         self.docket_data['golden'][name] = new_movie
-        self._save_docket_file(GOLDEN_DOCKET_FILE, self.docket_data['golden'])
+        self._save_docket_file(self.config.golden_docket_file, self.docket_data['golden'])
 
         # Remove the movie from movies.txt if present
         movie_lower = new_movie.strip().lower()
-        if os.path.exists(MOVIE_LIST_FILE):
-            with open(MOVIE_LIST_FILE, 'r', encoding='utf-8') as f:
+        if os.path.exists(self.config.movie_file):
+            with open(self.config.movie_file, 'r', encoding='utf-8') as f:
                 movies = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
             movies = [m for m in movies if m.strip().lower() != movie_lower]
-            with open(MOVIE_LIST_FILE, 'w', encoding='utf-8') as f:
+            with open(self.config.movie_file, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(movies))
             # Reload the input screen text box
-            self.input_screen.text_box.load_from_file(MOVIE_LIST_FILE)
+            self.input_screen.text_box.load_from_file(self.config.movie_file)
 
         # Remove the movie from queue.txt if present
-        if os.path.exists(QUEUE_FILE):
-            with open(QUEUE_FILE, 'r', encoding='utf-8') as f:
+        if os.path.exists(self.config.queue_file):
+            with open(self.config.queue_file, 'r', encoding='utf-8') as f:
                 queue = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
             queue = [m for m in queue if m.strip().lower() != movie_lower]
-            with open(QUEUE_FILE, 'w', encoding='utf-8') as f:
+            with open(self.config.queue_file, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(queue))
 
     def _end_current_heat(self, survivors: list):

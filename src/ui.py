@@ -6,11 +6,10 @@ from .constants import (
     WINDOW_WIDTH, WINDOW_HEIGHT, FONT_SIZES,
     UI_BG, UI_PANEL, UI_ACCENT, UI_ACCENT_HOVER, UI_TEXT, UI_TEXT_DIM,
     VICTORY_GOLD, VICTORY_GLOW, WHITE, BLACK, SPEED_OPTIONS,
-    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE, SEQUEL_FILE, ABILITY_WINS_FILE, ABILITY_STATS_FILE,
-    GOLDEN_DOCKET_FILE, DIAMOND_DOCKET_FILE, SHIT_DOCKET_FILE,
     DOCKET_GOLDEN, DOCKET_GOLDEN_DARK, DOCKET_DIAMOND, DOCKET_DIAMOND_DARK,
     DOCKET_SHIT, DOCKET_SHIT_DARK, ABILITIES
 )
+from .config import get_config
 
 
 class Button:
@@ -333,15 +332,16 @@ class TextBox:
 
 
 class InputScreen:
-    def __init__(self, fonts: dict):
+    def __init__(self, fonts: dict, config=None):
         self.fonts = fonts
+        self.config = config if config else get_config()
         self.window_width = WINDOW_WIDTH
         self.window_height = WINDOW_HEIGHT
         center_x = WINDOW_WIDTH // 2
 
-        self.text_box = TextBox(center_x - 300, 150, 600, 450, fonts['small'], save_path=MOVIE_LIST_FILE)
-        if os.path.exists(MOVIE_LIST_FILE):
-            self.text_box.load_from_file(MOVIE_LIST_FILE)
+        self.text_box = TextBox(center_x - 300, 150, 600, 450, fonts['small'], save_path=self.config.movie_file)
+        if os.path.exists(self.config.movie_file):
+            self.text_box.load_from_file(self.config.movie_file)
         self.battle_button = Button(center_x - 100, 620, 200, 50, "BATTLE!", fonts['medium'])
 
         # Queue Battle button (below main battle button)
@@ -549,9 +549,9 @@ class InputScreen:
     def load_queue(self):
         """Load queue items from queue.txt."""
         self.queue_items = []
-        if os.path.exists(QUEUE_FILE):
+        if os.path.exists(self.config.queue_file):
             try:
-                with open(QUEUE_FILE, 'r', encoding='utf-8') as f:
+                with open(self.config.queue_file, 'r', encoding='utf-8') as f:
                     lines = f.read().strip().split('\n')
                     self.queue_items = [line.strip() for line in lines if line.strip()]
             except:
@@ -561,12 +561,13 @@ class InputScreen:
         """Load docket picks from docket files."""
         self.docket_picks = {'golden': [], 'diamond': [], 'shit': []}
         docket_files = {
-            'golden': GOLDEN_DOCKET_FILE,
-            'diamond': DIAMOND_DOCKET_FILE,
-            'shit': SHIT_DOCKET_FILE
+            'golden': self.config.golden_docket_file,
+            'diamond': self.config.diamond_docket_file,
         }
+        if self.config.has_shit_docket:
+            docket_files['shit'] = self.config.shit_docket_file
         for docket_type, filepath in docket_files.items():
-            if os.path.exists(filepath):
+            if filepath and os.path.exists(filepath):
                 try:
                     with open(filepath, 'r', encoding='utf-8') as f:
                         lines = f.read().strip().split('\n')
@@ -583,9 +584,9 @@ class InputScreen:
     def load_sequels(self):
         """Load sequel items from sequels.txt."""
         self.sequel_items = []
-        if os.path.exists(SEQUEL_FILE):
+        if os.path.exists(self.config.sequel_file):
             try:
-                with open(SEQUEL_FILE, 'r', encoding='utf-8') as f:
+                with open(self.config.sequel_file, 'r', encoding='utf-8') as f:
                     lines = f.read().strip().split('\n')
                     self.sequel_items = [line.strip() for line in lines if line.strip()]
             except:
@@ -593,7 +594,7 @@ class InputScreen:
 
     def save_sequels(self):
         """Save sequel items to sequels.txt."""
-        with open(SEQUEL_FILE, 'w', encoding='utf-8') as f:
+        with open(self.config.sequel_file, 'w', encoding='utf-8') as f:
             f.write('\n'.join(self.sequel_items))
 
     def add_sequel(self, movie_name: str):
@@ -631,14 +632,14 @@ class InputScreen:
             self.save_sequels()
             # Add to watched list
             watched = []
-            if os.path.exists(WATCHED_FILE):
+            if os.path.exists(self.config.watched_file):
                 try:
-                    with open(WATCHED_FILE, 'r', encoding='utf-8') as f:
+                    with open(self.config.watched_file, 'r', encoding='utf-8') as f:
                         watched = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
                 except:
                     pass
             watched.append(movie_name)
-            with open(WATCHED_FILE, 'w', encoding='utf-8') as f:
+            with open(self.config.watched_file, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(watched))
 
     def check_queue_click(self, mouse_pos: tuple, mouse_clicked: bool) -> str:
@@ -655,15 +656,20 @@ class InputScreen:
         if movie_name in self.queue_items:
             self.queue_items.remove(movie_name)
             # Write updated queue to file
-            with open(QUEUE_FILE, 'w', encoding='utf-8') as f:
+            with open(self.config.queue_file, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(self.queue_items))
 
     def draw(self, screen: pygame.Surface):
-        screen.fill(UI_BG)
+        screen.fill(self.config.ui_bg)
         center_x = self.window_width // 2
 
+        # Mode label (if set)
+        if self.config.mode_label:
+            mode_label = self.fonts['small'].render(self.config.mode_label, True, self.config.ui_accent)
+            screen.blit(mode_label, (10, 10))
+
         # Title
-        title = self.fonts['title'].render("MOVIE BEYBLADE BATTLE", True, UI_ACCENT)
+        title = self.fonts['title'].render("MOVIE BEYBLADE BATTLE", True, self.config.ui_accent)
         title_rect = title.get_rect(center=(center_x, 60))
         screen.blit(title, title_rect)
 
@@ -1008,8 +1014,9 @@ class InputScreen:
 
 
 class BattleHUD:
-    def __init__(self, fonts: dict):
+    def __init__(self, fonts: dict, config=None):
         self.fonts = fonts
+        self.config = config if config else get_config()
         self.speed_buttons = []
         self.current_speed = 1
         self.muted = False
@@ -1155,8 +1162,9 @@ class BattleHUD:
 
 class HeatTransitionScreen:
     """Screen shown between heats to display who advances."""
-    def __init__(self, fonts: dict):
+    def __init__(self, fonts: dict, config=None):
         self.fonts = fonts
+        self.config = config if config else get_config()
         self.window_width = WINDOW_WIDTH
         self.window_height = WINDOW_HEIGHT
         center_x = WINDOW_WIDTH // 2
@@ -1248,8 +1256,9 @@ class HeatTransitionScreen:
 
 
 class VictoryScreen:
-    def __init__(self, fonts: dict):
+    def __init__(self, fonts: dict, config=None):
         self.fonts = fonts
+        self.config = config if config else get_config()
         self.window_width = WINDOW_WIDTH
         self.window_height = WINDOW_HEIGHT
         center_x = WINDOW_WIDTH // 2
@@ -1339,8 +1348,9 @@ class VictoryScreen:
 
 class LeaderboardScreen:
     """Shows final rankings of all contestants."""
-    def __init__(self, fonts: dict):
+    def __init__(self, fonts: dict, config=None):
         self.fonts = fonts
+        self.config = config if config else get_config()
         self.window_width = WINDOW_WIDTH
         self.window_height = WINDOW_HEIGHT
         center_x = WINDOW_WIDTH // 2
@@ -1382,9 +1392,9 @@ class LeaderboardScreen:
     def load_queue(self):
         """Load queue items from queue.txt."""
         self.queue_items = []
-        if os.path.exists(QUEUE_FILE):
+        if os.path.exists(self.config.queue_file):
             try:
-                with open(QUEUE_FILE, 'r', encoding='utf-8') as f:
+                with open(self.config.queue_file, 'r', encoding='utf-8') as f:
                     lines = f.read().strip().split('\n')
                     self.queue_items = [line.strip() for line in lines if line.strip()]
             except:
@@ -1393,9 +1403,9 @@ class LeaderboardScreen:
     def load_ability_wins(self):
         """Load ability win counts from file."""
         self.ability_wins = {}
-        if os.path.exists(ABILITY_WINS_FILE):
+        if os.path.exists(self.config.ability_wins_file):
             try:
-                with open(ABILITY_WINS_FILE, 'r', encoding='utf-8') as f:
+                with open(self.config.ability_wins_file, 'r', encoding='utf-8') as f:
                     for line in f:
                         line = line.strip()
                         if ':' in line:
@@ -1407,9 +1417,9 @@ class LeaderboardScreen:
     def load_ability_stats(self):
         """Load ability stats (tournament_wins, heat_wins, heats_participated) from file."""
         self.ability_stats = {}
-        if os.path.exists(ABILITY_STATS_FILE):
+        if os.path.exists(self.config.ability_stats_file):
             try:
-                with open(ABILITY_STATS_FILE, 'r', encoding='utf-8') as f:
+                with open(self.config.ability_stats_file, 'r', encoding='utf-8') as f:
                     for line in f:
                         line = line.strip()
                         if '|' in line:
@@ -1480,7 +1490,7 @@ class LeaderboardScreen:
         return self.queue_button.is_clicked(mouse_pos, mouse_clicked)
 
     def draw(self, screen: pygame.Surface):
-        screen.fill(UI_BG)
+        screen.fill(self.config.ui_bg)
 
         center_x = self.window_width // 2
 
