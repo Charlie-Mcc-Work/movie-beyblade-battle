@@ -23,3 +23,5 @@ The Pianist
 Fitzcarraldo
 Inglourious Basterds
 Throne of Blood
+Test Movie Sequel
+The Talented Mr. Ripley

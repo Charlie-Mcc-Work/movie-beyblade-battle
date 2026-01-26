@@ -1,10 +1,12 @@
 import pygame
 import os
+import math
+import random
 from .constants import (
     WINDOW_WIDTH, WINDOW_HEIGHT, FONT_SIZES,
     UI_BG, UI_PANEL, UI_ACCENT, UI_ACCENT_HOVER, UI_TEXT, UI_TEXT_DIM,
     VICTORY_GOLD, VICTORY_GLOW, WHITE, BLACK, SPEED_OPTIONS,
-    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE, ABILITY_WINS_FILE, ABILITY_STATS_FILE,
+    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE, SEQUEL_FILE, ABILITY_WINS_FILE, ABILITY_STATS_FILE,
     GOLDEN_DOCKET_FILE, DIAMOND_DOCKET_FILE, SHIT_DOCKET_FILE,
     DOCKET_GOLDEN, DOCKET_GOLDEN_DARK, DOCKET_DIAMOND, DOCKET_DIAMOND_DARK,
     DOCKET_SHIT, DOCKET_SHIT_DARK, ABILITIES
@@ -227,7 +229,7 @@ class TextBox:
             self.cursor_timer = 0
             self.cursor_visible = not self.cursor_visible
 
-    def draw(self, screen: pygame.Surface, bg_color=None, text_color=None):
+    def draw(self, screen: pygame.Surface, bg_color=None, text_color=None, show_count=True):
         # Background - use custom or default
         bg = bg_color if bg_color else UI_PANEL
         txt = text_color if text_color else UI_TEXT
@@ -237,7 +239,7 @@ class TextBox:
 
         # Text area with padding
         padding = min(10, self.rect.height // 4)
-        scrollbar_width = 12
+        scrollbar_width = 12 if show_count else 0  # No scrollbar for single-line inputs
         text_area = pygame.Rect(
             self.rect.left + padding,
             self.rect.top + padding,
@@ -278,8 +280,8 @@ class TextBox:
                 pygame.draw.line(screen, txt, (cursor_x, cursor_y),
                                (cursor_x, cursor_y + line_height), 2)
 
-        # Draw scrollbar if needed
-        if total_lines > max_visible_lines:
+        # Draw scrollbar if needed (only for multi-line inputs)
+        if show_count and total_lines > max_visible_lines:
             scrollbar_rect = pygame.Rect(
                 self.rect.right - scrollbar_width - padding // 2,
                 self.rect.top + padding,
@@ -301,12 +303,13 @@ class TextBox:
             thumb_color = UI_ACCENT if self.active else (80, 90, 110)
             pygame.draw.rect(screen, thumb_color, thumb_rect, border_radius=3)
 
-        # Movie count indicator
-        entry_count = len([l for l in lines if l.strip()])
-        count_text = f"{entry_count} movies"
-        count_surface = self.font.render(count_text, True, UI_TEXT_DIM)
-        count_rect = count_surface.get_rect(bottomright=(self.rect.right - padding, self.rect.bottom - 2))
-        screen.blit(count_surface, count_rect)
+        # Movie count indicator (only for multi-line inputs)
+        if show_count:
+            entry_count = len([l for l in lines if l.strip()])
+            count_text = f"{entry_count} movies"
+            count_surface = self.font.render(count_text, True, UI_TEXT_DIM)
+            count_rect = count_surface.get_rect(bottomright=(self.rect.right - padding, self.rect.bottom - 2))
+            screen.blit(count_surface, count_rect)
 
     def get_entries(self) -> list:
         """Parse text into list of movie titles."""
@@ -345,6 +348,31 @@ class InputScreen:
         self.queue_battle_button = Button(center_x - 100, 680, 200, 40, "QUEUE BATTLE", fonts['small'],
                                           color=(150, 100, 50), hover_color=(200, 150, 70))
 
+        # Sequel Battle button (below queue battle button)
+        self.sequel_battle_button = Button(center_x - 100, 730, 200, 40, "SEQUEL BATTLE", fonts['small'],
+                                           color=(80, 130, 80), hover_color=(100, 180, 100))
+
+        # Battle wheel state (always visible on home screen)
+        self.battle_wheel_spinning = False
+        self.battle_wheel_angle = 0.0
+        self.battle_wheel_velocity = 0.0
+        self.battle_wheel_result = None
+        self.battle_wheel_options = [
+            ("Battle!", UI_ACCENT),
+            ("Queue", (200, 150, 100)),
+            ("Queue Battle", (200, 150, 100)),
+            ("Sequels", (100, 200, 100)),
+            ("Sequel Battle", (100, 200, 100)),
+            ("Golden Docket", DOCKET_GOLDEN),
+        ]
+        # Battle wheel position and size
+        self.battle_wheel_radius = 90
+        self.battle_wheel_center_y = 905  # Below sequel battle button
+
+        # Spin button (below the wheel)
+        self.spin_button = Button(center_x - 40, 1005, 80, 30, "SPIN", fonts['small'],
+                                  color=(100, 80, 120), hover_color=(140, 100, 160))
+
         # Golden Docket button (bottom left)
         self.docket_button = Button(20, WINDOW_HEIGHT - 70, 180, 50, "GOLDEN DOCKET", fonts['small'],
                                     color=DOCKET_GOLDEN_DARK, hover_color=DOCKET_GOLDEN)
@@ -360,6 +388,19 @@ class InputScreen:
         self.queue_items = []
         self.queue_rects = []  # Clickable areas for queue items
         self.load_queue()
+
+        # Sequel display (left of queue)
+        self.sequel_items = []
+        self.sequel_rects = []  # Clickable areas for sequel items
+        # Calculate initial position (right side, left of queue panel)
+        queue_panel_width = 300
+        sequel_panel_width = 300
+        sequel_panel_x = WINDOW_WIDTH - queue_panel_width - 20 - sequel_panel_width - 10
+        sequel_input_y = 150 + 35  # panel_y + title space
+        self.sequel_input = TextBox(sequel_panel_x + 5, sequel_input_y, 240, 42, fonts['small'])
+        self.sequel_add_button = Button(sequel_panel_x + 250, sequel_input_y, 40, 42, "+", fonts['medium'],
+                                        color=(100, 150, 100), hover_color=(120, 200, 120))
+        self.load_sequels()
 
         # Docket picks display
         self.docket_picks = {'golden': [], 'diamond': [], 'shit': []}
@@ -380,6 +421,11 @@ class InputScreen:
         button_y = min(620, window_height - 180)
         self.battle_button.rect = pygame.Rect(center_x - 100, button_y, 200, 50)
         self.queue_battle_button.rect = pygame.Rect(center_x - 100, button_y + 60, 200, 40)
+        self.sequel_battle_button.rect = pygame.Rect(center_x - 100, button_y + 110, 200, 40)
+
+        # Reposition battle wheel (below sequel battle button)
+        self.battle_wheel_center_y = button_y + 285  # Center of wheel
+        self.spin_button.rect = pygame.Rect(center_x - 40, self.battle_wheel_center_y + self.battle_wheel_radius + 10, 80, 30)
 
         # Reposition docket button (bottom left)
         self.docket_button.rect = pygame.Rect(20, window_height - 70, 180, 50)
@@ -387,22 +433,65 @@ class InputScreen:
         # Reposition quit button (bottom right)
         self.quit_button.rect = pygame.Rect(window_width - 100, window_height - 70, 80, 50)
 
+        # Reposition sequel input (right side, left of queue panel)
+        queue_panel_width = 300
+        sequel_panel_width = 300
+        sequel_panel_x = window_width - queue_panel_width - 20 - sequel_panel_width - 10
+        sequel_input_y = 150 + 35  # panel_y + title space
+        self.sequel_input.rect = pygame.Rect(sequel_panel_x + 5, sequel_input_y, 240, 42)
+        self.sequel_add_button.rect = pygame.Rect(sequel_panel_x + 250, sequel_input_y, 40, 42)
+
     def handle_event(self, event: pygame.event.Event):
+        # Check for Enter key in sequel input BEFORE passing to text box
+        # (to prevent newline from being added)
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+            if self.sequel_input.active:
+                text = self.sequel_input.text.strip()
+                if text:
+                    self.add_sequel(text)
+                    self.sequel_input.text = ""
+                    self.sequel_input.cursor_pos = 0
+                    self.sequel_input.cursor_line = 0
+                return  # Don't pass Enter to text boxes
+
         self.text_box.handle_event(event)
+        self.sequel_input.handle_event(event)
 
     def update(self, mouse_pos: tuple) -> tuple:
         """Returns (should_start, movie_list)"""
         self.text_box.update()
+        self.sequel_input.update()
         self.battle_button.update(mouse_pos)
         self.queue_battle_button.update(mouse_pos)
+        self.sequel_battle_button.update(mouse_pos)
+        self.spin_button.update(mouse_pos)
         self.docket_button.update(mouse_pos)
         self.quit_button.update(mouse_pos)
+        self.sequel_add_button.update(mouse_pos)
 
         entries = self.text_box.get_entries()
         self.battle_button.enabled = len(entries) >= 2
 
         # Queue battle button enabled if queue has at least 2 items
         self.queue_battle_button.enabled = len(self.queue_items) >= 2
+
+        # Sequel battle button enabled if sequels has at least 2 items
+        self.sequel_battle_button.enabled = len(self.sequel_items) >= 2
+
+        # Update battle wheel physics
+        if self.battle_wheel_spinning:
+            self.battle_wheel_angle += self.battle_wheel_velocity
+            self.battle_wheel_velocity *= 0.985  # Friction
+            if self.battle_wheel_velocity < 0.05:
+                self.battle_wheel_spinning = False
+                # Determine result based on final angle
+                segment_angle = 360 / len(self.battle_wheel_options)
+                # Normalize angle and find which segment the pointer is on
+                normalized = (self.battle_wheel_angle % 360)
+                # Pointer is at top (270 degrees in pygame coords), so offset
+                pointer_angle = (270 - normalized) % 360
+                segment_idx = int(pointer_angle / segment_angle) % len(self.battle_wheel_options)
+                self.battle_wheel_result = self.battle_wheel_options[segment_idx][0]
 
         if self.error_timer > 0:
             self.error_timer -= 1
@@ -438,6 +527,25 @@ class InputScreen:
                 self.error_timer = 120
         return (False, [])
 
+    def check_sequel_battle(self, mouse_pos: tuple, mouse_clicked: bool) -> tuple:
+        """Check if sequel battle should start. Returns (should_start, movie_list)"""
+        if self.sequel_battle_button.is_clicked(mouse_pos, mouse_clicked):
+            if len(self.sequel_items) >= 2:
+                return (True, self.sequel_items.copy())
+            else:
+                self.error_message = "Need at least 2 movies in sequels!"
+                self.error_timer = 120
+        return (False, [])
+
+    def check_spin(self, mouse_pos: tuple, mouse_clicked: bool):
+        """Check if spin button was clicked."""
+        if self.spin_button.is_clicked(mouse_pos, mouse_clicked) and not self.battle_wheel_spinning:
+            self.battle_wheel_spinning = True
+            # Lots of randomness: random starting angle + random velocity
+            self.battle_wheel_angle = random.uniform(0, 360)
+            self.battle_wheel_velocity = random.uniform(12, 35)
+            self.battle_wheel_result = None
+
     def load_queue(self):
         """Load queue items from queue.txt."""
         self.queue_items = []
@@ -471,6 +579,67 @@ class InputScreen:
                                     self.docket_picks[docket_type].append((name, movie))
                 except:
                     pass
+
+    def load_sequels(self):
+        """Load sequel items from sequels.txt."""
+        self.sequel_items = []
+        if os.path.exists(SEQUEL_FILE):
+            try:
+                with open(SEQUEL_FILE, 'r', encoding='utf-8') as f:
+                    lines = f.read().strip().split('\n')
+                    self.sequel_items = [line.strip() for line in lines if line.strip()]
+            except:
+                pass
+
+    def save_sequels(self):
+        """Save sequel items to sequels.txt."""
+        with open(SEQUEL_FILE, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(self.sequel_items))
+
+    def add_sequel(self, movie_name: str):
+        """Add a movie to the sequel list."""
+        movie_name = movie_name.strip()
+        if movie_name and movie_name not in self.sequel_items:
+            self.sequel_items.append(movie_name)
+            self.save_sequels()
+
+    def check_sequel_add(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        """Check if sequel add button was clicked. Returns True if a sequel was added."""
+        if self.sequel_add_button.is_clicked(mouse_pos, mouse_clicked):
+            text = self.sequel_input.text.strip()
+            if text:
+                self.add_sequel(text)
+                self.sequel_input.text = ""
+                self.sequel_input.cursor_pos = 0
+                self.sequel_input.cursor_line = 0
+                return True
+        return False
+
+    def check_sequel_click(self, mouse_pos: tuple, mouse_clicked: bool) -> str:
+        """Check if a sequel item was clicked. Returns the item name if clicked, None otherwise."""
+        if not mouse_clicked:
+            return None
+        for i, rect in enumerate(self.sequel_rects):
+            if rect.collidepoint(mouse_pos) and i < len(self.sequel_items):
+                return self.sequel_items[i]
+        return None
+
+    def select_sequel(self, movie_name: str):
+        """Select a sequel - removes from sequel list and adds to watched."""
+        if movie_name in self.sequel_items:
+            self.sequel_items.remove(movie_name)
+            self.save_sequels()
+            # Add to watched list
+            watched = []
+            if os.path.exists(WATCHED_FILE):
+                try:
+                    with open(WATCHED_FILE, 'r', encoding='utf-8') as f:
+                        watched = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
+                except:
+                    pass
+            watched.append(movie_name)
+            with open(WATCHED_FILE, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(watched))
 
     def check_queue_click(self, mouse_pos: tuple, mouse_clicked: bool) -> str:
         """Check if a queue item was clicked. Returns the item name if clicked, None otherwise."""
@@ -515,6 +684,7 @@ class InputScreen:
         # Battle buttons
         self.battle_button.draw(screen)
         self.queue_battle_button.draw(screen)
+        self.sequel_battle_button.draw(screen)
 
         # Error message
         if self.error_timer > 0 and self.error_message:
@@ -559,13 +729,9 @@ class InputScreen:
             queue_title = self.fonts['medium'].render("QUEUE", True, (255, 180, 100))
             screen.blit(queue_title, (panel_x + 10, panel_y + 8))
 
-            # Subtitle
-            queue_sub = self.fonts['tiny'].render("Click to remove from queue", True, UI_TEXT_DIM)
-            screen.blit(queue_sub, (panel_x + 10, panel_y + 35))
-
             # Queue items (clickable)
             self.queue_rects = []
-            item_y = panel_y + 55
+            item_y = panel_y + 38
             for i, item in enumerate(self.queue_items[:max_items]):
                 display_name = item if len(item) <= 22 else item[:19] + "..."
 
@@ -589,8 +755,140 @@ class InputScreen:
                 more_text = self.fonts['tiny'].render(f"+{len(self.queue_items) - max_items} more...", True, UI_TEXT_DIM)
                 screen.blit(more_text, (panel_x + 10, item_y))
 
+        # Sequel panel on the right side (left of queue)
+        self._draw_sequel_panel(screen)
+
         # Docket picks panel on the left side
         self._draw_docket_picks(screen)
+
+        # Priority breakdown panel (between docket and center)
+        self._draw_priority_breakdown(screen)
+
+        # Battle wheel (always visible, below sequel battle button)
+        self._draw_battle_wheel(screen)
+
+    def _draw_battle_wheel(self, screen: pygame.Surface):
+        """Draw the battle wheel (always visible on home screen)."""
+        center_x = self.window_width // 2
+        center_y = self.battle_wheel_center_y
+        wheel_radius = self.battle_wheel_radius
+
+        # Title above wheel
+        title = self.fonts['small'].render("BATTLE WHEEL", True, UI_TEXT)
+        title_rect = title.get_rect(center=(center_x, center_y - wheel_radius - 15))
+        screen.blit(title, title_rect)
+
+        # Draw wheel segments
+        num_segments = len(self.battle_wheel_options)
+        segment_angle = 360 / num_segments
+
+        for i, (option_name, option_color) in enumerate(self.battle_wheel_options):
+            # Draw segment as a filled arc using polygon
+            points = [(center_x, center_y)]
+            for angle in range(int(i * segment_angle + self.battle_wheel_angle),
+                              int((i + 1) * segment_angle + self.battle_wheel_angle) + 1, 2):
+                rad = math.radians(angle)
+                x = center_x + wheel_radius * math.cos(rad)
+                y = center_y + wheel_radius * math.sin(rad)
+                points.append((x, y))
+            points.append((center_x, center_y))
+
+            if len(points) > 2:
+                pygame.draw.polygon(screen, option_color, points)
+                # Draw segment border
+                pygame.draw.polygon(screen, (30, 30, 40), points, 2)
+
+            # Draw label in the middle of the segment
+            mid_angle = math.radians((i + 0.5) * segment_angle + self.battle_wheel_angle)
+            label_dist = wheel_radius * 0.6
+            label_x = center_x + label_dist * math.cos(mid_angle)
+            label_y = center_y + label_dist * math.sin(mid_angle)
+
+            # Render text (use tiny font for smaller wheel)
+            label = self.fonts['tiny'].render(option_name, True, (0, 0, 0))
+            label_rect = label.get_rect(center=(label_x, label_y))
+            screen.blit(label, label_rect)
+
+        # Draw center circle
+        pygame.draw.circle(screen, (50, 50, 60), (center_x, center_y), 15)
+        pygame.draw.circle(screen, UI_TEXT_DIM, (center_x, center_y), 15, 2)
+
+        # Draw pointer at the top
+        pointer_points = [
+            (center_x, center_y - wheel_radius - 10),
+            (center_x - 8, center_y - wheel_radius + 3),
+            (center_x + 8, center_y - wheel_radius + 3),
+        ]
+        pygame.draw.polygon(screen, (255, 255, 255), pointer_points)
+        pygame.draw.polygon(screen, (100, 100, 100), pointer_points, 2)
+
+        # Draw spin button
+        self.spin_button.draw(screen)
+
+        # Show result if stopped and has result
+        if not self.battle_wheel_spinning and self.battle_wheel_result:
+            result_text = self.fonts['small'].render(f"Try: {self.battle_wheel_result}", True, VICTORY_GOLD)
+            result_rect = result_text.get_rect(center=(center_x, center_y + wheel_radius + 45))
+            screen.blit(result_text, result_rect)
+
+    def _draw_sequel_panel(self, screen: pygame.Surface):
+        """Draw the sequel panel to the left of the queue panel."""
+        panel_width = 300
+        queue_panel_width = 300
+        # Position to the left of the queue panel
+        panel_x = self.window_width - queue_panel_width - 20 - panel_width - 10  # 10px gap between panels
+        panel_y = 150
+        line_height = 24
+        max_items = min(50, len(self.sequel_items))
+
+        # Calculate panel height: input area + items
+        input_height = 65  # Space for title, input box, and add button
+        items_height = max(0, max_items * line_height)
+        panel_height = input_height + items_height + 25
+
+        # Panel background
+        panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+        panel_surface.fill((40, 55, 40, 230))
+        screen.blit(panel_surface, (panel_x, panel_y))
+        pygame.draw.rect(screen, (100, 200, 100), (panel_x, panel_y, panel_width, panel_height), 2, border_radius=8)
+
+        # Title
+        sequel_title = self.fonts['medium'].render("SEQUELS", True, (100, 200, 100))
+        screen.blit(sequel_title, (panel_x + 10, panel_y + 8))
+
+        # Input box and add button
+        input_y = panel_y + 35
+        self.sequel_input.rect = pygame.Rect(panel_x + 5, input_y, 240, 42)
+        self.sequel_add_button.rect = pygame.Rect(panel_x + 250, input_y, 40, 42)
+
+        self.sequel_input.draw(screen, bg_color=(30, 45, 30), text_color=(200, 255, 200), show_count=False)
+        self.sequel_add_button.draw(screen)
+
+        # Sequel items (clickable)
+        self.sequel_rects = []
+        item_y = input_y + 50
+        for i, item in enumerate(self.sequel_items[:max_items]):
+            display_name = item if len(item) <= 25 else item[:22] + "..."
+
+            # Clickable area
+            item_rect = pygame.Rect(panel_x + 5, item_y, panel_width - 10, line_height - 2)
+            self.sequel_rects.append(item_rect)
+
+            # Highlight on hover
+            mouse_pos = pygame.mouse.get_pos()
+            if item_rect.collidepoint(mouse_pos):
+                pygame.draw.rect(screen, (60, 80, 60), item_rect, border_radius=4)
+
+            # Item text
+            item_text = self.fonts['small'].render(f"  {display_name}", True, (200, 255, 200))
+            screen.blit(item_text, (panel_x + 10, item_y + 2))
+
+            item_y += line_height
+
+        # Show if there are more items
+        if len(self.sequel_items) > max_items:
+            more_text = self.fonts['tiny'].render(f"+{len(self.sequel_items) - max_items} more...", True, UI_TEXT_DIM)
+            screen.blit(more_text, (panel_x + 10, item_y))
 
     def _draw_docket_picks(self, screen: pygame.Surface):
         """Draw the docket picks panel on the left side of the input screen."""
@@ -657,6 +955,56 @@ class InputScreen:
                 entry = self.fonts['tiny'].render(entry_text, True, UI_TEXT)
                 screen.blit(entry, (panel_x + 10, y + 2))
                 y += line_height
+
+    def _draw_priority_breakdown(self, screen: pygame.Surface):
+        """Draw the priority breakdown panel between docket and center."""
+        # Position: to the right of docket panel (at x=20, width=280), left of center text box
+        panel_x = 310
+        panel_y = 150
+        panel_width = 240
+        line_height = 20
+
+        # Priority items with colors (weakest to strongest, 6 to 1)
+        priorities = [
+            ("6. Battle!", UI_ACCENT, "Winner can be sent to queue"),
+            ("5. Queue", (200, 150, 100), None),
+            ("4. Queue Battle", (200, 150, 100), "Winner must be watched"),
+            ("3. Sequels", (100, 200, 100), None),
+            ("2. Sequel Battle", (100, 200, 100), "Winner must be watched"),
+            ("1. Golden Docket", DOCKET_GOLDEN, "Winner must be watched"),
+        ]
+
+        # Calculate height based on items with/without descriptions
+        total_height = 40  # Title + padding
+        for _, _, desc in priorities:
+            total_height += line_height
+            if desc:
+                total_height += line_height - 4
+        panel_height = total_height
+
+        # Panel background
+        panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+        panel_surface.fill((35, 35, 45, 220))
+        screen.blit(panel_surface, (panel_x, panel_y))
+        pygame.draw.rect(screen, UI_TEXT_DIM, (panel_x, panel_y, panel_width, panel_height), 2, border_radius=8)
+
+        # Title
+        title = self.fonts['medium'].render("PRIORITY", True, UI_TEXT)
+        screen.blit(title, (panel_x + 10, panel_y + 8))
+
+        # Priority items
+        y = panel_y + 32
+        for priority_name, color, description in priorities:
+            # Priority name
+            name_text = self.fonts['small'].render(priority_name, True, color)
+            screen.blit(name_text, (panel_x + 10, y))
+            y += line_height
+
+            # Description (dimmer, indented) - only if provided
+            if description:
+                desc_text = self.fonts['tiny'].render(f"  {description}", True, UI_TEXT_DIM)
+                screen.blit(desc_text, (panel_x + 10, y))
+                y += line_height - 4
 
 
 class BattleHUD:
@@ -1011,9 +1359,16 @@ class LeaderboardScreen:
 
         # Ability wins leaderboard
         self.ability_wins = {}  # {ability_key: win_count}
+        self.ability_stats = {}  # {ability_key: {'wins': int, 'total_score': int, 'num_battles': int}}
 
-        # Flag to hide queue button (for queue battles)
-        self.hide_queue_button = False
+        # Ability sort mode: 'wins' (default) or 'win_rate'
+        self.ability_sort_mode = 'wins'
+        self.ability_sort_button = Button(20, 100, 130, 30, "Sort: Wins", fonts['tiny'],
+                                          color=(60, 80, 100), hover_color=(80, 120, 150))
+
+        # Flag to force choosing the winner (for queue/sequel battles)
+        # When True: hides queue, play again, and quit buttons
+        self.force_choose = False
 
     def update_layout(self, window_width: int, window_height: int):
         self.window_width = window_width
@@ -1050,7 +1405,7 @@ class LeaderboardScreen:
                 pass
 
     def load_ability_stats(self):
-        """Load ability stats (wins, total_score, num_battles) from file."""
+        """Load ability stats (tournament_wins, heat_wins, heats_participated) from file."""
         self.ability_stats = {}
         if os.path.exists(ABILITY_STATS_FILE):
             try:
@@ -1062,30 +1417,43 @@ class LeaderboardScreen:
                             if len(parts) == 4:
                                 ability = parts[0]
                                 self.ability_stats[ability] = {
-                                    'wins': int(parts[1]),
-                                    'total_score': int(parts[2]),
-                                    'num_battles': int(parts[3])
+                                    'tournament_wins': int(parts[1]),
+                                    'heat_wins': int(parts[2]),
+                                    'heats_participated': int(parts[3])
                                 }
             except:
                 pass
 
-    def set_rankings(self, winner: str, eliminated: list, is_queue_battle: bool = False):
+    def set_rankings(self, winner: str, eliminated: list, force_choose: bool = False):
         """Set rankings from winner (1st) and elimination order (last eliminated = 2nd)."""
         self.rankings = [winner] + list(reversed(eliminated))
         self.scroll_offset = 0
         self.winner_name = winner
-        self.hide_queue_button = is_queue_battle
+        self.force_choose = force_choose  # For queue/sequel battles, only allow choosing
         # Reload queue and ability stats
         self.load_queue()
         self.load_ability_wins()
         self.load_ability_stats()
 
     def update(self, mouse_pos: tuple):
-        self.play_again_button.update(mouse_pos)
-        self.quit_button.update(mouse_pos)
         self.choose_button.update(mouse_pos)
-        if not self.hide_queue_button:
+        if not self.force_choose:
+            self.play_again_button.update(mouse_pos)
+            self.quit_button.update(mouse_pos)
             self.queue_button.update(mouse_pos)
+        self.ability_sort_button.update(mouse_pos)
+
+    def check_ability_sort_toggle(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        """Check if ability sort button was clicked. Returns True if toggled."""
+        if self.ability_sort_button.is_clicked(mouse_pos, mouse_clicked):
+            if self.ability_sort_mode == 'wins':
+                self.ability_sort_mode = 'win_rate'
+                self.ability_sort_button.text = "Sort: Win Rate"
+            else:
+                self.ability_sort_mode = 'wins'
+                self.ability_sort_button.text = "Sort: Wins"
+            return True
+        return False
 
     def handle_scroll(self, event: pygame.event.Event):
         if event.type == pygame.MOUSEWHEEL:
@@ -1094,16 +1462,20 @@ class LeaderboardScreen:
             self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
 
     def check_play_again(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        if self.force_choose:
+            return False
         return self.play_again_button.is_clicked(mouse_pos, mouse_clicked)
 
     def check_quit(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        if self.force_choose:
+            return False
         return self.quit_button.is_clicked(mouse_pos, mouse_clicked)
 
     def check_choose(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
         return self.choose_button.is_clicked(mouse_pos, mouse_clicked)
 
     def check_queue(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
-        if self.hide_queue_button:
+        if self.force_choose:
             return False
         return self.queue_button.is_clicked(mouse_pos, mouse_clicked)
 
@@ -1159,33 +1531,48 @@ class LeaderboardScreen:
 
         # Buttons
         self.choose_button.draw(screen)
-        if not self.hide_queue_button:
+        if not self.force_choose:
             self.queue_button.draw(screen)
-        self.play_again_button.draw(screen)
-        self.quit_button.draw(screen)
+            self.play_again_button.draw(screen)
+            self.quit_button.draw(screen)
 
         # Button labels
         choose_label = self.fonts['tiny'].render("Watch this movie", True, UI_TEXT_DIM)
         screen.blit(choose_label, (self.choose_button.rect.centerx - choose_label.get_width() // 2, self.choose_button.rect.bottom + 5))
 
-        if not self.hide_queue_button:
+        if not self.force_choose:
             queue_label = self.fonts['tiny'].render("Add to queue, replay", True, UI_TEXT_DIM)
             screen.blit(queue_label, (self.queue_button.rect.centerx - queue_label.get_width() // 2, self.queue_button.rect.bottom + 5))
 
         # Ability stats panel on the left side
         if hasattr(self, 'ability_stats') and self.ability_stats:
-            panel_width = 280
+            panel_width = 300
             panel_x = 20
-            panel_y = 100
-            line_height = 26
-            # Sort by average score descending (wins as tiebreaker)
-            sorted_abilities = sorted(
-                self.ability_stats.items(),
-                key=lambda x: (x[1]['total_score'] / max(1, x[1]['num_battles']), x[1]['wins']),
-                reverse=True
-            )
-            max_items = min(15, len(sorted_abilities))
-            panel_height = max_items * line_height + 70
+            panel_y = 140  # Leave room for sort button
+            line_height = 24
+
+            # Sort button (above panel)
+            self.ability_sort_button.rect = pygame.Rect(panel_x, panel_y - 35, 130, 28)
+            self.ability_sort_button.draw(screen)
+
+            # Sort based on current mode
+            if self.ability_sort_mode == 'wins':
+                # Sort by heat wins (descending), then by win rate as tiebreaker
+                sorted_abilities = sorted(
+                    self.ability_stats.items(),
+                    key=lambda x: (x[1]['heat_wins'], x[1]['heat_wins'] / max(1, x[1]['heats_participated'])),
+                    reverse=True
+                )
+            else:
+                # Sort by win rate (descending), then by heat wins as tiebreaker
+                sorted_abilities = sorted(
+                    self.ability_stats.items(),
+                    key=lambda x: (x[1]['heat_wins'] / max(1, x[1]['heats_participated']), x[1]['heat_wins']),
+                    reverse=True
+                )
+
+            max_items = min(20, len(sorted_abilities))
+            panel_height = max_items * line_height + 55
 
             # Panel background
             panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
@@ -1194,18 +1581,18 @@ class LeaderboardScreen:
             pygame.draw.rect(screen, (100, 180, 255), (panel_x, panel_y, panel_width, panel_height), 2, border_radius=8)
 
             # Title
-            ability_title = self.fonts['small'].render("ABILITY STATS", True, (100, 180, 255))
-            screen.blit(ability_title, (panel_x + 10, panel_y + 8))
+            ability_title = self.fonts['small'].render("ABILITY LEADERBOARD", True, (100, 180, 255))
+            screen.blit(ability_title, (panel_x + 10, panel_y + 5))
 
             # Column headers
-            header_y = panel_y + 32
-            header_wins = self.fonts['tiny'].render("Wins", True, UI_TEXT_DIM)
-            header_avg = self.fonts['tiny'].render("Avg", True, UI_TEXT_DIM)
-            screen.blit(header_wins, (panel_x + panel_width - 85, header_y))
-            screen.blit(header_avg, (panel_x + panel_width - 40, header_y))
+            header_y = panel_y + 28
+            header_wins = self.fonts['tiny'].render("Heats", True, UI_TEXT_DIM)
+            header_rate = self.fonts['tiny'].render("Rate", True, UI_TEXT_DIM)
+            screen.blit(header_wins, (panel_x + panel_width - 95, header_y))
+            screen.blit(header_rate, (panel_x + panel_width - 45, header_y))
 
             # Ability rankings
-            item_y = panel_y + 52
+            item_y = panel_y + 46
             for i, (ability_key, stats) in enumerate(sorted_abilities[:max_items]):
                 # Get ability display name and color
                 ability_data = ABILITIES.get(ability_key, {})
@@ -1215,61 +1602,28 @@ class LeaderboardScreen:
                 # Brighten the color for readability
                 bright_color = tuple(min(255, c + 60) for c in ability_color)
 
-                # Calculate average score
-                avg_score = stats['total_score'] / max(1, stats['num_battles'])
+                # Calculate heat win rate
+                win_rate = stats['heat_wins'] / max(1, stats['heats_participated'])
+                win_rate_pct = int(win_rate * 100)
 
                 # Rank number
                 rank_text = self.fonts['tiny'].render(f"{i+1}.", True, UI_TEXT_DIM)
-                screen.blit(rank_text, (panel_x + 10, item_y))
+                screen.blit(rank_text, (panel_x + 8, item_y))
 
                 # Ability name (truncated if needed)
-                display_name = ability_name if len(ability_name) <= 12 else ability_name[:10] + ".."
+                display_name = ability_name if len(ability_name) <= 11 else ability_name[:9] + ".."
                 name_text = self.fonts['tiny'].render(display_name, True, bright_color)
-                screen.blit(name_text, (panel_x + 35, item_y))
+                screen.blit(name_text, (panel_x + 30, item_y))
 
-                # Win count
-                wins_text = self.fonts['tiny'].render(f"{stats['wins']}", True, VICTORY_GOLD)
-                screen.blit(wins_text, (panel_x + panel_width - 80, item_y))
+                # Heat wins as "X/Y" (heat wins out of heats participated)
+                wins_display = f"{stats['heat_wins']}/{stats['heats_participated']}"
+                wins_text = self.fonts['tiny'].render(wins_display, True, VICTORY_GOLD)
+                screen.blit(wins_text, (panel_x + panel_width - 95, item_y))
 
-                # Average score
-                avg_text = self.fonts['tiny'].render(f"{avg_score:.1f}", True, (150, 220, 150))
-                screen.blit(avg_text, (panel_x + panel_width - 40, item_y))
-
-                item_y += line_height
-        elif self.ability_wins:
-            # Fallback to old wins-only display if no stats yet
-            panel_width = 220
-            panel_x = 20
-            panel_y = 100
-            line_height = 26
-            sorted_abilities = sorted(self.ability_wins.items(), key=lambda x: x[1], reverse=True)
-            max_items = min(15, len(sorted_abilities))
-            panel_height = max_items * line_height + 50
-
-            panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
-            panel_surface.fill((40, 50, 60, 220))
-            screen.blit(panel_surface, (panel_x, panel_y))
-            pygame.draw.rect(screen, (100, 180, 255), (panel_x, panel_y, panel_width, panel_height), 2, border_radius=8)
-
-            ability_title = self.fonts['small'].render("ABILITY WINS", True, (100, 180, 255))
-            screen.blit(ability_title, (panel_x + 10, panel_y + 8))
-
-            item_y = panel_y + 38
-            for i, (ability_key, wins) in enumerate(sorted_abilities[:max_items]):
-                ability_data = ABILITIES.get(ability_key, {})
-                ability_name = ability_data.get('name', ability_key)
-                ability_color = ability_data.get('color', (200, 200, 200))
-                bright_color = tuple(min(255, c + 60) for c in ability_color)
-
-                rank_text = self.fonts['tiny'].render(f"{i+1}.", True, UI_TEXT_DIM)
-                screen.blit(rank_text, (panel_x + 10, item_y))
-
-                display_name = ability_name if len(ability_name) <= 14 else ability_name[:12] + ".."
-                name_text = self.fonts['tiny'].render(display_name, True, bright_color)
-                screen.blit(name_text, (panel_x + 35, item_y))
-
-                wins_text = self.fonts['tiny'].render(f"{wins}", True, VICTORY_GOLD)
-                screen.blit(wins_text, (panel_x + panel_width - 30, item_y))
+                # Win rate percentage
+                rate_color = (100, 255, 100) if win_rate_pct >= 50 else (255, 200, 100) if win_rate_pct >= 25 else UI_TEXT
+                rate_text = self.fonts['tiny'].render(f"{win_rate_pct}%", True, rate_color)
+                screen.blit(rate_text, (panel_x + panel_width - 40, item_y))
 
                 item_y += line_height
 

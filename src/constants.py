@@ -170,6 +170,7 @@ STATE_DOCKET_ZOOM = 'docket_zoom'
 MOVIE_LIST_FILE = "movies.txt"
 QUEUE_FILE = "queue.txt"
 WATCHED_FILE = "watched.txt"
+SEQUEL_FILE = "sequels.txt"
 GOLDEN_DOCKET_FILE = "goldendocket.txt"
 DIAMOND_DOCKET_FILE = "diamonddocket.txt"
 SHIT_DOCKET_FILE = "shitdocket.txt"

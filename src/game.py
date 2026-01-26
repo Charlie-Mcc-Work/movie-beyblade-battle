@@ -8,7 +8,7 @@ from .constants import (
     STATE_INPUT, STATE_BATTLE, STATE_HEAT_TRANSITION, STATE_VICTORY, STATE_LEADERBOARD,
     STATE_DOCKET_SELECT, STATE_DOCKET_SPIN, STATE_DOCKET_RESULT, STATE_DOCKET_ZOOM,
     BEYBLADE_COLORS, ABILITY_CHANCE, ABILITIES, ARENA_RADIUS, AVATAR_ABILITIES,
-    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE, ABILITY_WINS_FILE, ABILITY_STATS_FILE,
+    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE, SEQUEL_FILE, ABILITY_WINS_FILE, ABILITY_STATS_FILE,
     GOLDEN_DOCKET_FILE, DIAMOND_DOCKET_FILE, SHIT_DOCKET_FILE,
     PERMANENT_PEOPLE_FILE, PEOPLE_COUNTER_FILE
 )
@@ -89,11 +89,13 @@ class Game:
         self.round_number = 1
         self.ability_win_recorded = False  # Prevent double-recording ability wins
         self.is_queue_battle = False  # True if battling queue.txt movies
+        self.is_sequel_battle = False  # True if battling sequels.txt movies
 
         # Tournament state
         self.heats: list[list[str]] = []
         self.current_heat = 0
         self.heat_winners: list[str] = []
+        self.current_heat_participants: list[str] = []  # Participants in current heat (for stats)
         self.is_finals = False
         self.advancers_per_heat = 2  # Top N from each heat advance
         self.max_per_heat = 11  # Max beyblades per heat
@@ -324,6 +326,9 @@ class Game:
             self.arena.set_preliminary_mode(False)
 
         self._spawn_beyblades(movies)
+
+        # Track participants for this heat (for ability stats)
+        self.current_heat_participants = [b.name for b in self.beyblades if not b.is_clone and not getattr(b, 'barbie_is_fragment', False)]
 
         # Start countdown (3 seconds at 60 FPS = 180 frames)
         self.countdown_timer = 180
@@ -613,18 +618,38 @@ class Game:
             should_start, movie_list = self.input_screen.check_start(mouse_pos, mouse_clicked)
             if should_start:
                 self.is_queue_battle = False
+                self.is_sequel_battle = False
                 self.start_battle(movie_list)
 
             # Check for queue battle start
             should_start_queue, queue_movies = self.input_screen.check_queue_battle(mouse_pos, mouse_clicked)
             if should_start_queue:
                 self.is_queue_battle = True
+                self.is_sequel_battle = False
                 self.start_battle(queue_movies)
+
+            # Check for sequel battle start
+            should_start_sequel, sequel_movies = self.input_screen.check_sequel_battle(mouse_pos, mouse_clicked)
+            if should_start_sequel:
+                self.is_queue_battle = False
+                self.is_sequel_battle = True
+                self.start_battle(sequel_movies)
 
             # Check for queue item click (to remove from queue)
             clicked_queue_item = self.input_screen.check_queue_click(mouse_pos, mouse_clicked)
             if clicked_queue_item:
                 self.input_screen.remove_from_queue(clicked_queue_item)
+
+            # Check for sequel add button click
+            self.input_screen.check_sequel_add(mouse_pos, mouse_clicked)
+
+            # Check for sequel item click (to select/watch)
+            clicked_sequel_item = self.input_screen.check_sequel_click(mouse_pos, mouse_clicked)
+            if clicked_sequel_item:
+                self.input_screen.select_sequel(clicked_sequel_item)
+
+            # Check for spin button
+            self.input_screen.check_spin(mouse_pos, mouse_clicked)
 
             # Check for Golden Docket button click
             if self.input_screen.check_docket(mouse_pos, mouse_clicked):
@@ -685,25 +710,33 @@ class Game:
         elif self.state == STATE_VICTORY:
             self.victory_screen.update(mouse_pos)
             if self.victory_screen.check_leaderboard(mouse_pos, mouse_clicked):
-                self.leaderboard_screen.set_rankings(self.winner, self.all_eliminated, self.is_queue_battle)
+                # Force choosing for queue/sequel battles (no play again, quit, or queue options)
+                force_choose = self.is_queue_battle or self.is_sequel_battle
+                self.leaderboard_screen.set_rankings(self.winner, self.all_eliminated, force_choose)
                 self.state = STATE_LEADERBOARD
 
         elif self.state == STATE_LEADERBOARD:
             self.leaderboard_screen.update(mouse_pos)
+            # Check ability sort toggle (non-exclusive, can happen alongside other checks)
+            self.leaderboard_screen.check_ability_sort_toggle(mouse_pos, mouse_clicked)
+
             if self.leaderboard_screen.check_play_again(mouse_pos, mouse_clicked):
                 self.is_queue_battle = False
+                self.is_sequel_battle = False
                 self.state = STATE_INPUT
             elif self.leaderboard_screen.check_quit(mouse_pos, mouse_clicked):
                 self.running = False
             elif self.leaderboard_screen.check_choose(mouse_pos, mouse_clicked):
-                # CHOOSE: Move winner from movies.txt (or queue.txt) to watched.txt
+                # CHOOSE: Move winner from movies.txt (or queue.txt or sequels.txt) to watched.txt
                 self._choose_movie(self.winner)
                 self.is_queue_battle = False
+                self.is_sequel_battle = False
                 self.state = STATE_INPUT
             elif self.leaderboard_screen.check_queue(mouse_pos, mouse_clicked):
                 # QUEUE: Move winner from movies.txt to queue.txt and restart
                 self._queue_movie(self.winner)
                 self.is_queue_battle = False
+                self.is_sequel_battle = False
                 self.state = STATE_INPUT
 
         elif self.state == STATE_DOCKET_SELECT:
@@ -1963,13 +1996,18 @@ class Game:
         return base_name.strip()
 
     def _choose_movie(self, movie_name: str):
-        """Move winner from movies.txt (or queue.txt for queue battles) to watched.txt."""
+        """Move winner from movies.txt (or queue.txt/sequels.txt) to watched.txt."""
         # Get base name (strip ability suffixes)
         base_name = self._get_base_movie_name(movie_name)
         base_lower = base_name.lower()
 
         # Determine source file based on battle type
-        source_file = QUEUE_FILE if self.is_queue_battle else MOVIE_LIST_FILE
+        if self.is_queue_battle:
+            source_file = QUEUE_FILE
+        elif self.is_sequel_battle:
+            source_file = SEQUEL_FILE
+        else:
+            source_file = MOVIE_LIST_FILE
 
         # Read current items from source
         items = []
@@ -1993,10 +2031,11 @@ class Game:
         with open(WATCHED_FILE, 'w', encoding='utf-8') as f:
             f.write('\n'.join(watched))
 
-        # Reload the input screen text box and queue
+        # Reload the input screen text box, queue, and sequels
         if os.path.exists(MOVIE_LIST_FILE):
             self.input_screen.text_box.load_from_file(MOVIE_LIST_FILE)
         self.input_screen.load_queue()
+        self.input_screen.load_sequels()
 
     def _queue_movie(self, movie_name: str):
         """Move winner from movies.txt to queue.txt and restart."""
@@ -2062,19 +2101,8 @@ class Game:
             for ability, count in sorted(ability_wins.items()):
                 f.write(f"{ability}: {count}\n")
 
-    def _record_ability_stats(self):
-        """Record all ability scores for the tournament to ability stats file.
-
-        Each movie gets a score based on placement:
-        - Winner gets num_participants points
-        - First eliminated gets 1 point
-        - Rankings are based on elimination order
-        """
-        # Build the final ranking: all_eliminated (first to last) + winner
-        # Winner is not in all_eliminated, they're the survivor
-        total_participants = len(self.all_eliminated) + 1  # +1 for winner
-
-        # Load current ability stats: {ability: {'wins': int, 'total_score': int, 'num_battles': int}}
+    def _load_ability_stats(self):
+        """Load ability stats from file. Format: ability|tournament_wins|heat_wins|heats_participated"""
         ability_stats = {}
         if os.path.exists(ABILITY_STATS_FILE):
             try:
@@ -2086,40 +2114,58 @@ class Game:
                             if len(parts) == 4:
                                 ability = parts[0]
                                 ability_stats[ability] = {
-                                    'wins': int(parts[1]),
-                                    'total_score': int(parts[2]),
-                                    'num_battles': int(parts[3])
+                                    'tournament_wins': int(parts[1]),
+                                    'heat_wins': int(parts[2]),
+                                    'heats_participated': int(parts[3])
                                 }
             except:
                 pass
+        return ability_stats
 
-        # Record scores for all participants
-        # Eliminated movies: score = position in all_eliminated + 1 (1 for first out, 2 for second, etc.)
-        for i, movie_name in enumerate(self.all_eliminated):
+    def _save_ability_stats(self, ability_stats):
+        """Save ability stats to file."""
+        with open(ABILITY_STATS_FILE, 'w', encoding='utf-8') as f:
+            for ability in sorted(ability_stats.keys()):
+                stats = ability_stats[ability]
+                f.write(f"{ability}|{stats['tournament_wins']}|{stats['heat_wins']}|{stats['heats_participated']}\n")
+
+    def _record_heat_stats(self, participants: list, survivors: list):
+        """Record heat participation and wins for all abilities in this heat.
+
+        participants: list of beyblade names that participated in this heat
+        survivors: list of beyblade names that survived (won) this heat
+        """
+        ability_stats = self._load_ability_stats()
+        survivor_set = set(survivors)
+
+        for movie_name in participants:
             if movie_name in self.movie_abilities:
                 ability_key, _ = self.movie_abilities[movie_name]
                 if ability_key:
                     if ability_key not in ability_stats:
-                        ability_stats[ability_key] = {'wins': 0, 'total_score': 0, 'num_battles': 0}
-                    score = i + 1  # First eliminated gets 1, second gets 2, etc.
-                    ability_stats[ability_key]['total_score'] += score
-                    ability_stats[ability_key]['num_battles'] += 1
+                        ability_stats[ability_key] = {'tournament_wins': 0, 'heat_wins': 0, 'heats_participated': 0}
+                    ability_stats[ability_key]['heats_participated'] += 1
+                    if movie_name in survivor_set:
+                        ability_stats[ability_key]['heat_wins'] += 1
 
-        # Winner gets the top score
-        if self.winner and self.winner != "No Winner" and self.winner in self.movie_abilities:
-            ability_key, _ = self.movie_abilities[self.winner]
-            if ability_key:
-                if ability_key not in ability_stats:
-                    ability_stats[ability_key] = {'wins': 0, 'total_score': 0, 'num_battles': 0}
-                ability_stats[ability_key]['wins'] += 1
-                ability_stats[ability_key]['total_score'] += total_participants
-                ability_stats[ability_key]['num_battles'] += 1
+        self._save_ability_stats(ability_stats)
 
-        # Save updated ability stats
-        with open(ABILITY_STATS_FILE, 'w', encoding='utf-8') as f:
-            for ability in sorted(ability_stats.keys()):
-                stats = ability_stats[ability]
-                f.write(f"{ability}|{stats['wins']}|{stats['total_score']}|{stats['num_battles']}\n")
+    def _record_ability_stats(self):
+        """Record tournament win for the winner's ability."""
+        if not self.winner or self.winner == "No Winner":
+            return
+        if self.winner not in self.movie_abilities:
+            return
+
+        ability_key, _ = self.movie_abilities[self.winner]
+        if not ability_key:
+            return
+
+        ability_stats = self._load_ability_stats()
+        if ability_key not in ability_stats:
+            ability_stats[ability_key] = {'tournament_wins': 0, 'heat_wins': 0, 'heats_participated': 0}
+        ability_stats[ability_key]['tournament_wins'] += 1
+        self._save_ability_stats(ability_stats)
 
     def _load_docket_file(self, filepath: str) -> dict:
         """Load docket entries from file. Returns {name: movie} dict."""
@@ -2466,6 +2512,11 @@ class Game:
     def _end_current_heat(self, survivors: list):
         """Handle end of a heat - advance winners or end tournament."""
         survivor_names = [b.name for b in survivors]
+
+        # Record heat stats for abilities (skip clones and fragments)
+        real_survivor_names = [b.name for b in survivors if not b.is_clone and not getattr(b, 'barbie_is_fragment', False)]
+        if self.current_heat_participants and not self.is_preliminary:
+            self._record_heat_stats(self.current_heat_participants, real_survivor_names)
 
         # Handle preliminary round ending
         if self.is_preliminary:

@@ -8,7 +8,9 @@
       "Bash(netstat:*)",
       "Bash(findstr:*)",
       "Bash(taskkill:*)",
-      "Bash(taskkill /F /PID 17704)"
+      "Bash(taskkill /F /PID 17704)",
+      "Bash(ls:*)",
+      "Bash(python3:*)"
     ]
   }
 }

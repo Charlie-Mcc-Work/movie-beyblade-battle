@@ -1,4 +1,4 @@
-amadeus: 3
+amadeus: 5
 andy_dufresne: 1
 batman: 4
 berserker: 2
