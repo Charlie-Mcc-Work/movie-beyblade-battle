@@ -2,12 +2,13 @@ import pygame
 import random
 import math
 import os
+import threading
 from .constants import (
     WINDOW_WIDTH, WINDOW_HEIGHT, FPS, UI_BG, WHITE, LIGHT_BLUE,
     STATE_INPUT, STATE_BATTLE, STATE_HEAT_TRANSITION, STATE_VICTORY, STATE_LEADERBOARD,
     STATE_DOCKET_SELECT, STATE_DOCKET_SPIN, STATE_DOCKET_RESULT, STATE_DOCKET_ZOOM,
     BEYBLADE_COLORS, ABILITY_CHANCE, ABILITIES, ARENA_RADIUS, AVATAR_ABILITIES,
-    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE, ABILITY_WINS_FILE,
+    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE, ABILITY_WINS_FILE, ABILITY_STATS_FILE,
     GOLDEN_DOCKET_FILE, DIAMOND_DOCKET_FILE, SHIT_DOCKET_FILE,
     PERMANENT_PEOPLE_FILE, PEOPLE_COUNTER_FILE
 )
@@ -21,8 +22,17 @@ from .docket import DocketWheel, DocketZoomTransition
 
 
 class Game:
-    def __init__(self):
+    def __init__(self, web_mode=False):
         pygame.init()
+
+        # Web mode flag for streaming to browsers
+        self.web_mode = web_mode
+        if web_mode:
+            print(f"[Game] Starting in web mode, cwd: {os.getcwd()}")
+        self.frame_callback = None  # Called after each frame with screen surface
+        self.external_events = []  # Events injected from web clients
+        self._external_events_lock = threading.Lock()  # Thread safety for web events
+        self._web_mouse_pos = (0, 0)  # Mouse position from web client
 
         # Make window resizable
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE)
@@ -255,6 +265,8 @@ class Game:
             # If few movies, just run single battle (no heats needed)
             if len(movie_list) <= self.max_per_heat:
                 self.heats = [movie_list.copy()]  # Use copy to avoid reference issues
+                if self.web_mode:
+                    print(f"[Battle] Single heat with {len(movie_list)} movies")
             else:
                 # Split into heats (slicing creates new lists)
                 self.heats = []
@@ -262,6 +274,8 @@ class Game:
                     heat = movie_list[i:i + self.max_per_heat]
                     if heat:
                         self.heats.append(heat)
+                if self.web_mode:
+                    print(f"[Battle] {len(self.heats)} heats created: {[len(h) for h in self.heats]} movies each")
 
             # Start first heat
             self._start_heat(0)
@@ -508,6 +522,11 @@ class Game:
         if self.participant_select_screen:
             self.participant_select_screen.update_layout(new_width, new_height)
 
+    def inject_event(self, event_dict):
+        """Inject an event from external source (web client)."""
+        with self._external_events_lock:
+            self.external_events.append(event_dict)
+
     def handle_events(self):
         mouse_clicked = False
 
@@ -515,6 +534,15 @@ class Game:
         current_size = self.screen.get_size()
         if current_size[0] != self.window_width or current_size[1] != self.window_height:
             self._handle_resize(current_size[0], current_size[1])
+
+        # Process external events from web clients (thread-safe)
+        with self._external_events_lock:
+            events_to_process = self.external_events[:]
+            self.external_events.clear()
+        for ext in events_to_process:
+            event = self._convert_external_event(ext)
+            if event:
+                pygame.event.post(event)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -545,8 +573,40 @@ class Game:
 
         return mouse_clicked
 
+    def _convert_external_event(self, ext):
+        """Convert external event dict to pygame event."""
+        try:
+            if ext['type'] == 'mousedown':
+                return pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=ext.get('button', 1), pos=(ext['x'], ext['y']))
+            elif ext['type'] == 'mouseup':
+                return pygame.event.Event(pygame.MOUSEBUTTONUP, button=ext.get('button', 1), pos=(ext['x'], ext['y']))
+            elif ext['type'] == 'mousemove':
+                # Pygame doesn't have a move event, but we track position via get_pos()
+                # We'll handle this differently - set a stored position
+                self._web_mouse_pos = (ext['x'], ext['y'])
+                return None
+            elif ext['type'] == 'keydown':
+                key = ext.get('key', 0)
+                mod = ext.get('mod', 0)
+                unicode_char = ext.get('unicode', '')
+                return pygame.event.Event(pygame.KEYDOWN, key=key, mod=mod, unicode=unicode_char)
+            elif ext['type'] == 'keyup':
+                key = ext.get('key', 0)
+                mod = ext.get('mod', 0)
+                return pygame.event.Event(pygame.KEYUP, key=key, mod=mod)
+            elif ext['type'] == 'mousewheel':
+                # Pygame 2.x scroll event
+                return pygame.event.Event(pygame.MOUSEWHEEL, y=ext.get('y', 0), x=ext.get('x', 0))
+        except Exception:
+            pass
+        return None
+
     def update(self, mouse_clicked: bool):
-        mouse_pos = pygame.mouse.get_pos()
+        # Use web mouse position if available, otherwise pygame's
+        if self.web_mode and hasattr(self, '_web_mouse_pos'):
+            mouse_pos = self._web_mouse_pos
+        else:
+            mouse_pos = pygame.mouse.get_pos()
 
         if self.state == STATE_INPUT:
             self.input_screen.update(mouse_pos)
@@ -568,6 +628,7 @@ class Game:
 
             # Check for Golden Docket button click
             if self.input_screen.check_docket(mouse_pos, mouse_clicked):
+                print(f"[UI] Golden Docket button clicked")
                 self._start_docket_select()
 
             # Check for Quit button click
@@ -650,6 +711,7 @@ class Game:
             self.participant_select_screen.handle_click(mouse_pos, mouse_clicked)
 
             if self.participant_select_screen.check_start(mouse_pos, mouse_clicked):
+                print(f"[UI] Start Golden Docket button clicked")
                 self._start_docket_spin()
 
         elif self.state == STATE_DOCKET_SPIN:
@@ -1455,11 +1517,11 @@ class Game:
                         self.effects.spawn_ability_notification(beyblade.name, 'HOPE PREVAILS!', ABILITIES['andy_dufresne']['color'], 'ability', 'Andy Dufresne')
                         self.effects.spawn_collision_sparks(beyblade.x, beyblade.y, 3.0)
 
-        # Shelob: crawl after 3 seconds without being hit
+        # Shelob: crawl after 5 seconds without being hit
         for beyblade in self.beyblades:
             if beyblade.alive and beyblade.ability == 'shelob':
                 beyblade.shelob_no_hit_timer += 1
-                if beyblade.shelob_no_hit_timer >= 180:  # 3 seconds
+                if beyblade.shelob_no_hit_timer >= 300:  # 5 seconds
                     if not beyblade.shelob_is_crawling:
                         beyblade.shelob_is_crawling = True
                         beyblade.shelob_crawl_angle = random.uniform(0, 2 * math.pi)
@@ -1486,12 +1548,27 @@ class Game:
                             # Turn toward center
                             beyblade.shelob_crawl_angle = math.atan2(-dy, -dx)
                     else:
-                        # Rectangle arena - stay away from edges
-                        margin = 100
-                        if beyblade.x < self.arena.rect_left + margin:
-                            beyblade.shelob_crawl_angle = 0  # Turn right
-                        elif beyblade.x > self.arena.rect_right - margin:
-                            beyblade.shelob_crawl_angle = math.pi  # Turn left
+                        # Rectangle arena - stay away from CURRENT edges (accounts for moving walls)
+                        # Use larger margin when walls are closing to stay safe
+                        margin = 150 if self.arena.edges_closing else 100
+                        current_left = self.arena.current_rect_left
+                        current_right = self.arena.current_rect_right
+
+                        # Check if too close to left wall
+                        if beyblade.x < current_left + margin:
+                            beyblade.shelob_crawl_angle = 0  # Turn right (away from left wall)
+                        # Check if too close to right wall
+                        elif beyblade.x > current_right - margin:
+                            beyblade.shelob_crawl_angle = math.pi  # Turn left (away from right wall)
+
+                        # If walls are very close together, move toward center
+                        arena_width = current_right - current_left
+                        if arena_width < 400:
+                            center_x = (current_left + current_right) / 2
+                            if beyblade.x < center_x:
+                                beyblade.shelob_crawl_angle = 0  # Move right toward center
+                            else:
+                                beyblade.shelob_crawl_angle = math.pi  # Move left toward center
 
         # American Psycho: reset own damage after 20 seconds
         for beyblade in self.beyblades:
@@ -1985,6 +2062,65 @@ class Game:
             for ability, count in sorted(ability_wins.items()):
                 f.write(f"{ability}: {count}\n")
 
+    def _record_ability_stats(self):
+        """Record all ability scores for the tournament to ability stats file.
+
+        Each movie gets a score based on placement:
+        - Winner gets num_participants points
+        - First eliminated gets 1 point
+        - Rankings are based on elimination order
+        """
+        # Build the final ranking: all_eliminated (first to last) + winner
+        # Winner is not in all_eliminated, they're the survivor
+        total_participants = len(self.all_eliminated) + 1  # +1 for winner
+
+        # Load current ability stats: {ability: {'wins': int, 'total_score': int, 'num_battles': int}}
+        ability_stats = {}
+        if os.path.exists(ABILITY_STATS_FILE):
+            try:
+                with open(ABILITY_STATS_FILE, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if '|' in line:
+                            parts = line.split('|')
+                            if len(parts) == 4:
+                                ability = parts[0]
+                                ability_stats[ability] = {
+                                    'wins': int(parts[1]),
+                                    'total_score': int(parts[2]),
+                                    'num_battles': int(parts[3])
+                                }
+            except:
+                pass
+
+        # Record scores for all participants
+        # Eliminated movies: score = position in all_eliminated + 1 (1 for first out, 2 for second, etc.)
+        for i, movie_name in enumerate(self.all_eliminated):
+            if movie_name in self.movie_abilities:
+                ability_key, _ = self.movie_abilities[movie_name]
+                if ability_key:
+                    if ability_key not in ability_stats:
+                        ability_stats[ability_key] = {'wins': 0, 'total_score': 0, 'num_battles': 0}
+                    score = i + 1  # First eliminated gets 1, second gets 2, etc.
+                    ability_stats[ability_key]['total_score'] += score
+                    ability_stats[ability_key]['num_battles'] += 1
+
+        # Winner gets the top score
+        if self.winner and self.winner != "No Winner" and self.winner in self.movie_abilities:
+            ability_key, _ = self.movie_abilities[self.winner]
+            if ability_key:
+                if ability_key not in ability_stats:
+                    ability_stats[ability_key] = {'wins': 0, 'total_score': 0, 'num_battles': 0}
+                ability_stats[ability_key]['wins'] += 1
+                ability_stats[ability_key]['total_score'] += total_participants
+                ability_stats[ability_key]['num_battles'] += 1
+
+        # Save updated ability stats
+        with open(ABILITY_STATS_FILE, 'w', encoding='utf-8') as f:
+            for ability in sorted(ability_stats.keys()):
+                stats = ability_stats[ability]
+                f.write(f"{ability}|{stats['wins']}|{stats['total_score']}|{stats['num_battles']}\n")
+
     def _load_docket_file(self, filepath: str) -> dict:
         """Load docket entries from file. Returns {name: movie} dict."""
         entries = {}
@@ -2011,15 +2147,21 @@ class Game:
     def _load_permanent_people(self) -> list:
         """Load permanent people list from file."""
         people = []
+        print(f"[Load] Checking for permanent people file: {PERMANENT_PEOPLE_FILE} (exists: {os.path.exists(PERMANENT_PEOPLE_FILE)})")
         if os.path.exists(PERMANENT_PEOPLE_FILE):
             try:
                 with open(PERMANENT_PEOPLE_FILE, 'r', encoding='utf-8') as f:
-                    for line in f.read().strip().split('\n'):
+                    content = f.read()
+                    print(f"[Load] Raw file content: {repr(content[:200])}")
+                    for line in content.strip().split('\n'):
                         name = line.strip()
                         if name:
                             people.append(name)
-            except:
-                pass
+                print(f"[Load] Loaded permanent people: {people}")
+            except Exception as e:
+                print(f"Error loading permanent people: {e}")
+        else:
+            print(f"Permanent people file not found: {PERMANENT_PEOPLE_FILE} (cwd: {os.getcwd()})")
         return people
 
     def _load_people_counter(self) -> dict:
@@ -2071,14 +2213,18 @@ class Game:
 
     def _start_docket_select(self):
         """Start the docket participant selection screen."""
+        print(f"[Docket] _start_docket_select called, cwd={os.getcwd()}")
+
         # Load all docket files
         self.docket_data['golden'] = self._load_docket_file(GOLDEN_DOCKET_FILE)
         self.docket_data['diamond'] = self._load_docket_file(DIAMOND_DOCKET_FILE)
         self.docket_data['shit'] = self._load_docket_file(SHIT_DOCKET_FILE)
+        print(f"[Docket] Loaded docket files - golden: {len(self.docket_data['golden'])} entries")
 
         # Load permanent people and people counter
         permanent_people = self._load_permanent_people()
         people_counter = self._load_people_counter()
+        print(f"[Docket] Loaded permanent_people={permanent_people}, counter_keys={list(people_counter.keys())}")
 
         # Store people_counter for later updates
         self.people_counter = people_counter
@@ -2086,6 +2232,7 @@ class Game:
         # Check if we have any people (permanent or in counter)
         if not permanent_people and not people_counter and not self.docket_data['golden']:
             # No participants at all, can't proceed
+            print(f"[Docket] No participants at all, returning to input")
             return
 
         # Create participant select screen with all data
@@ -2097,14 +2244,21 @@ class Game:
         )
         self.participant_select_screen.update_layout(self.window_width, self.window_height)
         self.state = STATE_DOCKET_SELECT
+        print(f"[Docket] State set to STATE_DOCKET_SELECT")
 
     def _start_docket_spin(self):
         """Start the wheel spin with selected participants."""
+        print(f"[Docket] _start_docket_spin called")
+
         # Get selected participants
         self.docket_participants = self.participant_select_screen.get_selected_participants()
+        print(f"[Docket] Selected participants: {self.docket_participants}")
 
         if not self.docket_participants:
+            print(f"[Docket] No participants selected, returning to input")
+            self.state = STATE_INPUT
             return
+        print(f"[Docket] Starting spin with {len(self.docket_participants)} participants: {self.docket_participants}")
 
         # Handle counter updates for recurring people
         increments, decrements, newly_added = self.participant_select_screen.get_counter_updates()
@@ -2154,6 +2308,8 @@ class Game:
                 entries.append((name, self.docket_data['golden'][name]))
 
         if not entries:
+            print(f"[Docket] No entries found for selected participants in golden docket, returning to input")
+            self.state = STATE_INPUT
             return
 
         # Build next tier entries for preview (diamond docket)
@@ -2355,9 +2511,11 @@ class Game:
             else:
                 self.winner = "No Winner"
                 self.victory_screen.set_winner("No Winner")
-            # Record the winning ability (only once per tournament)
-            if self.winner and self.winner != "No Winner" and not self.ability_win_recorded:
-                self._record_ability_win(self.winner)
+            # Record ability stats (only once per tournament)
+            if not self.ability_win_recorded:
+                if self.winner and self.winner != "No Winner":
+                    self._record_ability_win(self.winner)
+                self._record_ability_stats()
                 self.ability_win_recorded = True
             self.effects.sound.play('victory')
             self.avatar_manager.sync_with_beyblades(self.beyblades, winner_name=self.winner)
@@ -2943,6 +3101,10 @@ class Game:
             self.docket_result_screen.draw(self.screen)
 
         pygame.display.flip()
+
+        # Call frame callback for web streaming
+        if self.frame_callback:
+            self.frame_callback(self.screen)
 
     def run(self):
         while self.running:

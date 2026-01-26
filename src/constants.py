@@ -1,11 +1,11 @@
 # Window settings
-WINDOW_WIDTH = 1200
-WINDOW_HEIGHT = 800
+WINDOW_WIDTH = 1920
+WINDOW_HEIGHT = 1200
 FPS = 60
 
 # Arena settings
 ARENA_CENTER = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
-ARENA_RADIUS = 525
+ARENA_RADIUS = 480
 
 # Beyblade settings
 BEYBLADE_RADIUS = 25
@@ -176,6 +176,7 @@ SHIT_DOCKET_FILE = "shitdocket.txt"
 PERMANENT_PEOPLE_FILE = "permenantpeople.txt"
 PEOPLE_COUNTER_FILE = "peoplecounter.txt"
 ABILITY_WINS_FILE = "abilitywins.txt"
+ABILITY_STATS_FILE = "abilitystats.txt"  # Tracks wins, total score, and num battles per ability
 
 # Avatar settings
 AVATAR_DISTANCE_FROM_ARENA = 60  # Pixels outside arena edge
@@ -447,7 +448,7 @@ ABILITIES = {
         'name': 'Shelob',
         'color': (40, 40, 40),
         'type': 'passive',
-        'description': 'Crawls on 8 legs after 3s without being hit',
+        'description': 'Crawls on 8 legs after 5s without being hit',
     },
     'the_prestige': {
         'name': 'The Prestige',

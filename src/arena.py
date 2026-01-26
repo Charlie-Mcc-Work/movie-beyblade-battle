@@ -698,8 +698,9 @@ class Arena:
             tangent_y = math.cos(angle)
             inward_x = -math.cos(angle)
             inward_y = -math.sin(angle)
-            vx = (tangent_x * 0.6 + inward_x * 0.4) * speed
-            vy = (tangent_y * 0.6 + inward_y * 0.4) * speed
+            # Mix of tangential and inward velocity
+            vx = (tangent_x * 0.45 + inward_x * 0.55) * speed
+            vy = (tangent_y * 0.45 + inward_y * 0.55) * speed
 
             spawns.append((x, y, vx, vy))
 

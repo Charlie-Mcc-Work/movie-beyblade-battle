@@ -4,7 +4,7 @@ from .constants import (
     WINDOW_WIDTH, WINDOW_HEIGHT, FONT_SIZES,
     UI_BG, UI_PANEL, UI_ACCENT, UI_ACCENT_HOVER, UI_TEXT, UI_TEXT_DIM,
     VICTORY_GOLD, VICTORY_GLOW, WHITE, BLACK, SPEED_OPTIONS,
-    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE, ABILITY_WINS_FILE,
+    MOVIE_LIST_FILE, QUEUE_FILE, WATCHED_FILE, ABILITY_WINS_FILE, ABILITY_STATS_FILE,
     GOLDEN_DOCKET_FILE, DIAMOND_DOCKET_FILE, SHIT_DOCKET_FILE,
     DOCKET_GOLDEN, DOCKET_GOLDEN_DARK, DOCKET_DIAMOND, DOCKET_DIAMOND_DARK,
     DOCKET_SHIT, DOCKET_SHIT_DARK, ABILITIES
@@ -1049,15 +1049,36 @@ class LeaderboardScreen:
             except:
                 pass
 
+    def load_ability_stats(self):
+        """Load ability stats (wins, total_score, num_battles) from file."""
+        self.ability_stats = {}
+        if os.path.exists(ABILITY_STATS_FILE):
+            try:
+                with open(ABILITY_STATS_FILE, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if '|' in line:
+                            parts = line.split('|')
+                            if len(parts) == 4:
+                                ability = parts[0]
+                                self.ability_stats[ability] = {
+                                    'wins': int(parts[1]),
+                                    'total_score': int(parts[2]),
+                                    'num_battles': int(parts[3])
+                                }
+            except:
+                pass
+
     def set_rankings(self, winner: str, eliminated: list, is_queue_battle: bool = False):
         """Set rankings from winner (1st) and elimination order (last eliminated = 2nd)."""
         self.rankings = [winner] + list(reversed(eliminated))
         self.scroll_offset = 0
         self.winner_name = winner
         self.hide_queue_button = is_queue_battle
-        # Reload queue and ability wins
+        # Reload queue and ability stats
         self.load_queue()
         self.load_ability_wins()
+        self.load_ability_stats()
 
     def update(self, mouse_pos: tuple):
         self.play_again_button.update(mouse_pos)
@@ -1151,16 +1172,20 @@ class LeaderboardScreen:
             queue_label = self.fonts['tiny'].render("Add to queue, replay", True, UI_TEXT_DIM)
             screen.blit(queue_label, (self.queue_button.rect.centerx - queue_label.get_width() // 2, self.queue_button.rect.bottom + 5))
 
-        # Ability wins panel on the left side
-        if self.ability_wins:
-            panel_width = 220
+        # Ability stats panel on the left side
+        if hasattr(self, 'ability_stats') and self.ability_stats:
+            panel_width = 280
             panel_x = 20
             panel_y = 100
             line_height = 26
-            # Sort by wins descending
-            sorted_abilities = sorted(self.ability_wins.items(), key=lambda x: x[1], reverse=True)
+            # Sort by average score descending (wins as tiebreaker)
+            sorted_abilities = sorted(
+                self.ability_stats.items(),
+                key=lambda x: (x[1]['total_score'] / max(1, x[1]['num_battles']), x[1]['wins']),
+                reverse=True
+            )
             max_items = min(15, len(sorted_abilities))
-            panel_height = max_items * line_height + 50
+            panel_height = max_items * line_height + 70
 
             # Panel background
             panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
@@ -1169,12 +1194,19 @@ class LeaderboardScreen:
             pygame.draw.rect(screen, (100, 180, 255), (panel_x, panel_y, panel_width, panel_height), 2, border_radius=8)
 
             # Title
-            ability_title = self.fonts['small'].render("ABILITY WINS", True, (100, 180, 255))
+            ability_title = self.fonts['small'].render("ABILITY STATS", True, (100, 180, 255))
             screen.blit(ability_title, (panel_x + 10, panel_y + 8))
 
+            # Column headers
+            header_y = panel_y + 32
+            header_wins = self.fonts['tiny'].render("Wins", True, UI_TEXT_DIM)
+            header_avg = self.fonts['tiny'].render("Avg", True, UI_TEXT_DIM)
+            screen.blit(header_wins, (panel_x + panel_width - 85, header_y))
+            screen.blit(header_avg, (panel_x + panel_width - 40, header_y))
+
             # Ability rankings
-            item_y = panel_y + 38
-            for i, (ability_key, wins) in enumerate(sorted_abilities[:max_items]):
+            item_y = panel_y + 52
+            for i, (ability_key, stats) in enumerate(sorted_abilities[:max_items]):
                 # Get ability display name and color
                 ability_data = ABILITIES.get(ability_key, {})
                 ability_name = ability_data.get('name', ability_key)
@@ -1183,16 +1215,59 @@ class LeaderboardScreen:
                 # Brighten the color for readability
                 bright_color = tuple(min(255, c + 60) for c in ability_color)
 
+                # Calculate average score
+                avg_score = stats['total_score'] / max(1, stats['num_battles'])
+
                 # Rank number
                 rank_text = self.fonts['tiny'].render(f"{i+1}.", True, UI_TEXT_DIM)
                 screen.blit(rank_text, (panel_x + 10, item_y))
 
                 # Ability name (truncated if needed)
-                display_name = ability_name if len(ability_name) <= 14 else ability_name[:12] + ".."
+                display_name = ability_name if len(ability_name) <= 12 else ability_name[:10] + ".."
                 name_text = self.fonts['tiny'].render(display_name, True, bright_color)
                 screen.blit(name_text, (panel_x + 35, item_y))
 
                 # Win count
+                wins_text = self.fonts['tiny'].render(f"{stats['wins']}", True, VICTORY_GOLD)
+                screen.blit(wins_text, (panel_x + panel_width - 80, item_y))
+
+                # Average score
+                avg_text = self.fonts['tiny'].render(f"{avg_score:.1f}", True, (150, 220, 150))
+                screen.blit(avg_text, (panel_x + panel_width - 40, item_y))
+
+                item_y += line_height
+        elif self.ability_wins:
+            # Fallback to old wins-only display if no stats yet
+            panel_width = 220
+            panel_x = 20
+            panel_y = 100
+            line_height = 26
+            sorted_abilities = sorted(self.ability_wins.items(), key=lambda x: x[1], reverse=True)
+            max_items = min(15, len(sorted_abilities))
+            panel_height = max_items * line_height + 50
+
+            panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+            panel_surface.fill((40, 50, 60, 220))
+            screen.blit(panel_surface, (panel_x, panel_y))
+            pygame.draw.rect(screen, (100, 180, 255), (panel_x, panel_y, panel_width, panel_height), 2, border_radius=8)
+
+            ability_title = self.fonts['small'].render("ABILITY WINS", True, (100, 180, 255))
+            screen.blit(ability_title, (panel_x + 10, panel_y + 8))
+
+            item_y = panel_y + 38
+            for i, (ability_key, wins) in enumerate(sorted_abilities[:max_items]):
+                ability_data = ABILITIES.get(ability_key, {})
+                ability_name = ability_data.get('name', ability_key)
+                ability_color = ability_data.get('color', (200, 200, 200))
+                bright_color = tuple(min(255, c + 60) for c in ability_color)
+
+                rank_text = self.fonts['tiny'].render(f"{i+1}.", True, UI_TEXT_DIM)
+                screen.blit(rank_text, (panel_x + 10, item_y))
+
+                display_name = ability_name if len(ability_name) <= 14 else ability_name[:12] + ".."
+                name_text = self.fonts['tiny'].render(display_name, True, bright_color)
+                screen.blit(name_text, (panel_x + 35, item_y))
+
                 wins_text = self.fonts['tiny'].render(f"{wins}", True, VICTORY_GOLD)
                 screen.blit(wins_text, (panel_x + panel_width - 30, item_y))
 
@@ -1239,6 +1314,7 @@ class ParticipantSelectScreen:
         people_counter: dict of {name: count} from peoplecounter.txt
         docket_data: dict with 'golden', 'diamond', 'shit' keys containing {name: movie}
         """
+        print(f"[ParticipantSelectScreen] Init with permanent_people={permanent_people}, counter_keys={list(people_counter.keys())}")
         self.fonts = fonts
         self.window_width = WINDOW_WIDTH
         self.window_height = WINDOW_HEIGHT

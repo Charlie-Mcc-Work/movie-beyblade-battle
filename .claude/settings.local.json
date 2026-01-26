@@ -1,7 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(wc -l \"C:\\\\Users\\\\charl\\\\Documents\\\\Movies\\\\movie-beyblade-battle - Copy - Copy\\\\src\"*.py)",
+      "Bash(find:*)",
+      "Bash(pip install:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(taskkill /F /PID 17704)"
     ]
   }
 }

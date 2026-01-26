@@ -1,0 +1,97 @@
+================================================================================
+  MOVIE BEYBLADE BATTLE - HEADLESS LINUX SETUP
+  For running on a Debian laptop without GUI (e.g., ThinkPad server)
+================================================================================
+
+STEP 1: INSTALL SYSTEM DEPENDENCIES
+------------------------------------
+sudo apt update
+sudo apt install python3 python3-pip python3-venv xvfb
+
+
+STEP 2: CLONE/PULL THE REPO
+------------------------------------
+cd ~
+git clone <your-repo-url> movie-beyblade-battle
+# OR if already cloned:
+cd movie-beyblade-battle && git pull
+
+
+STEP 3: INSTALL PYTHON DEPENDENCIES
+------------------------------------
+cd ~/movie-beyblade-battle
+pip3 install -r requirements.txt
+
+
+STEP 4: RUN THE WEB SERVER
+------------------------------------
+# Option A: Simple one-liner (recommended)
+xvfb-run -a python3 web_server.py
+
+# Option B: Manual Xvfb setup (if option A has issues)
+Xvfb :99 -screen 0 1280x1024x24 &
+export DISPLAY=:99
+python3 web_server.py
+
+
+STEP 5: ACCESS FROM OTHER DEVICES
+------------------------------------
+The server will print the IP address when it starts, e.g.:
+  Access from other devices: http://192.168.1.50:5000
+
+Open that URL in any browser on your network.
+
+
+================================================================================
+  RUNNING AS A BACKGROUND SERVICE (OPTIONAL)
+================================================================================
+
+To keep it running after you disconnect from SSH:
+
+# Option 1: Using screen
+sudo apt install screen
+screen -S beyblade
+xvfb-run -a python3 web_server.py
+# Press Ctrl+A then D to detach
+# Reconnect later with: screen -r beyblade
+
+# Option 2: Using nohup
+nohup xvfb-run -a python3 web_server.py > beyblade.log 2>&1 &
+
+# Option 3: Using tmux
+sudo apt install tmux
+tmux new -s beyblade
+xvfb-run -a python3 web_server.py
+# Press Ctrl+B then D to detach
+# Reconnect later with: tmux attach -t beyblade
+
+
+================================================================================
+  TROUBLESHOOTING
+================================================================================
+
+"No module named pygame" or similar:
+  pip3 install -r requirements.txt
+
+"No display" or "couldn't connect to display" errors:
+  Make sure you're using xvfb-run or have DISPLAY set
+
+Can't connect from other devices:
+  - Check firewall: sudo ufw allow 5000
+  - Verify IP address: hostname -I
+  - Make sure devices are on the same network
+
+Server crashes or freezes:
+  Check beyblade.log if using nohup, or just restart
+
+
+================================================================================
+  QUICK START SUMMARY
+================================================================================
+
+1. sudo apt install python3 python3-pip xvfb
+2. pip3 install -r requirements.txt
+3. xvfb-run -a python3 web_server.py
+4. Open http://<laptop-ip>:5000 in browser
+
+================================================================================

@@ -370,9 +370,9 @@ def resolve_collision(b1: Beyblade, b2: Beyblade) -> tuple:
     w1 = b2.weight / total_weight
     w2 = b1.weight / total_weight
 
-    base_impulse = 5.0  # Reduced from 6.0
-    speed_impulse = relative_speed * 1.2  # Reduced from 1.8 for softer hits
-    attack_bonus = (b1.attack + b2.attack) * 0.10  # Reduced from 0.12
+    base_impulse = 5.8  # Increased for harder hits
+    speed_impulse = relative_speed * 1.4  # Increased for harder hits
+    attack_bonus = (b1.attack + b2.attack) * 0.13  # Increased
     impulse = base_impulse + speed_impulse + attack_bonus
 
     # Calculate knockback multipliers for each beyblade

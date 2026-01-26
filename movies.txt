@@ -4,9 +4,7 @@ Incendies
 Sunset Boulevard
 Memories of Murder
 It's a Wonderful Life
-The Pianist
 The Voice of Hind Rajab
-Happy as Lazzaro
 Lars and the Real Girl
 Dead Poets Society
 Children of Men
@@ -14,6 +12,7 @@ Marley and Me
 Fallen Angels
 Fargo
 Trespass
+Point Break
 Secret Obsession
 The Snowman
 Spiderhead
@@ -35,6 +34,7 @@ The Perks of being a Wallflower
 The Silence of the Lambs
 Gone Girl
 American History X
+The Secret Agent
 Scarface
 Chicago
 Run Lola Run
@@ -48,7 +48,6 @@ Deliverance
 Scent of a Woman
 Anatomy of a Murder
 Onibaba
-Army of Shadows
 Trainspotting
 The Long Goodbye
 Rashomon
@@ -61,13 +60,13 @@ Anora
 Mr. & Mrs. Smith
 Jesus Christ Superstar
 The Hurt Locker
+Point Break
 The Substance
 Midnight in Paris
 Pretty Woman
 42
 Sin City
 The Sixth Sense
-Aladdin
 Jurassic Park
 Psycho
 Sansho the Baliff
@@ -79,7 +78,6 @@ Gangs of New York
 The Son of a Thousand Men
 Little Amélie or the Character of Rain
 Aguirre, the Wrath of God
-Late Shift
 Reservoir dogs
 Sympathy for Mr. Vengeance
 The Transporter
@@ -102,22 +100,19 @@ Homebound
 Dial M for Murder
 Godzilla 1954
 The Killing
-The Bridge on the River Kwai
 The Cranes are Flying
 Crash
 Independence Day
-Office Space
 American Beauty
 Girl, Interrupted
 Fantasia 2000
 O Brother, Where Art Though?
-Requium for a Dream
+Requiem for a Dream
 Charlie's Angels
 A.I. Artificial Intelligence
 The Cranes are Flying
 Witness for the Prosecution
 Ghost
-Edward Scissorhands
 Boyz n the Hood
 Barton Fink
 Thelma & Louise
@@ -143,10 +138,8 @@ A Clockwork Orange
 Dirty Harry
 Serpico
 The Exorcist
-Dersu Uzala
 Kagemusha
 The Hidden Fortress
-The Bad Sleep Well
 Taxi Driver
 Assault on Precinct 13
 Carrie
@@ -169,7 +162,6 @@ Blue Velver
 The Mosquito Coast
 Raising Arizona
 Empire of the Sun
-The Fabelmans
 The Color Purple
 Spaceballs
 Coming to America
@@ -183,13 +175,10 @@ Dr. Strangelove
 The Prestige
 The Fellowship of the Ring
 Full Metal Jacket
-Nuremburg
 Baby Driver
 Pearl
 The Imitation Game
-Scream 2
 The Whale
-Ocean's 11
 The Life of Pi
 Elvis
 Leave the World Behind
@@ -201,7 +190,6 @@ Argyle
 Wolfwalkers
 Shaft
 The Lighthouse
-The Gorge
 The Favourite
 First Man
 War Dogs
@@ -213,13 +201,11 @@ Poltergeist
 The Wailing
 Diary of a Wimpy Kid
 Demolition
-Twister
 A Silent Voice
 Swiss Army Man
 The Man From Uncle
 Atomic Blonde
 Wedding Crashers
-Ratatouille
 The Good Dinosaur
 Steve Jobs
 The Lobster
