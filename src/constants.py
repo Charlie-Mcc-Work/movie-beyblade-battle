@@ -551,7 +551,7 @@ ABILITIES = {
         'name': 'Neo',
         'color': (0, 50, 0),
         'type': 'triggered',
-        'description': 'Resets heat if killed in first 0.5s',
+        'description': 'Resets heat if killed in first 1s',
     },
     'deadpool': {
         'name': 'Deadpool',

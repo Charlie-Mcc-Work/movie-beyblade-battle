@@ -15,27 +15,22 @@ The Big Short
 Punch-Drunk-Love
 Batman Begins
 Sorry To Bother You
-Creep
 Holes
 Chicken Run
 The Terminator
-The Master
 Nosferatu
 Annie Hall
 The Matrix 4
 Hercules
 There Will be Blood
-The Pianist
 (500) Days of Summer
 Pride and Prejudice
 Final Destination
 The Notebook
 From Paris with Love
-The Shining
 In the Mood for Love
 Before Sunrise
 A Knight's Tale
-1917
 Aftersun
 The Boy and the Heron
 When Harry Met Sally
@@ -44,7 +39,3 @@ Firebrand
 Lisa Frankenstein
 Major Payne
 Licorice Pizza
-Ran
-2001: A Space Odyssey
-Barry Lyndon
-J.S.A

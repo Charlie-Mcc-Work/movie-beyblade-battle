@@ -1371,9 +1371,9 @@ class LeaderboardScreen:
         self.ability_wins = {}  # {ability_key: win_count}
         self.ability_stats = {}  # {ability_key: {'wins': int, 'total_score': int, 'num_battles': int}}
 
-        # Ability sort mode: 'wins' (default) or 'win_rate'
-        self.ability_sort_mode = 'wins'
-        self.ability_sort_button = Button(20, 100, 130, 30, "Sort: Wins", fonts['tiny'],
+        # Ability sort mode: 'tournament' (default) or 'heat'
+        self.ability_sort_mode = 'tournament'
+        self.ability_sort_button = Button(20, 100, 130, 30, "Sort: Tourney", fonts['tiny'],
                                           color=(60, 80, 100), hover_color=(80, 120, 150))
 
         # Flag to force choosing the winner (for queue/sequel battles)
@@ -1415,7 +1415,7 @@ class LeaderboardScreen:
                 pass
 
     def load_ability_stats(self):
-        """Load ability stats (tournament_wins, heat_wins, heats_participated) from file."""
+        """Load ability stats from file. Format: ability|tournament_wins|heat_wins|heats_participated"""
         self.ability_stats = {}
         if os.path.exists(self.config.ability_stats_file):
             try:
@@ -1456,12 +1456,12 @@ class LeaderboardScreen:
     def check_ability_sort_toggle(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
         """Check if ability sort button was clicked. Returns True if toggled."""
         if self.ability_sort_button.is_clicked(mouse_pos, mouse_clicked):
-            if self.ability_sort_mode == 'wins':
-                self.ability_sort_mode = 'win_rate'
-                self.ability_sort_button.text = "Sort: Win Rate"
+            if self.ability_sort_mode == 'tournament':
+                self.ability_sort_mode = 'heat'
+                self.ability_sort_button.text = "Sort: Heat"
             else:
-                self.ability_sort_mode = 'wins'
-                self.ability_sort_button.text = "Sort: Wins"
+                self.ability_sort_mode = 'tournament'
+                self.ability_sort_button.text = "Sort: Tourney"
             return True
         return False
 
@@ -1565,19 +1565,26 @@ class LeaderboardScreen:
             self.ability_sort_button.rect = pygame.Rect(panel_x, panel_y - 35, 130, 28)
             self.ability_sort_button.draw(screen)
 
+            # Helper to calculate rates (both use heats_participated as denominator)
+            def get_tournament_rate(stats):
+                return stats['tournament_wins'] / max(1, stats['heats_participated'])
+
+            def get_heat_rate(stats):
+                return stats['heat_wins'] / max(1, stats['heats_participated'])
+
             # Sort based on current mode
-            if self.ability_sort_mode == 'wins':
-                # Sort by heat wins (descending), then by win rate as tiebreaker
+            if self.ability_sort_mode == 'tournament':
+                # Sort by tournament win rate (descending), then by heat rate as tiebreaker
                 sorted_abilities = sorted(
                     self.ability_stats.items(),
-                    key=lambda x: (x[1]['heat_wins'], x[1]['heat_wins'] / max(1, x[1]['heats_participated'])),
+                    key=lambda x: (get_tournament_rate(x[1]), get_heat_rate(x[1])),
                     reverse=True
                 )
             else:
-                # Sort by win rate (descending), then by heat wins as tiebreaker
+                # Sort by heat win rate (descending), then by tournament rate as tiebreaker
                 sorted_abilities = sorted(
                     self.ability_stats.items(),
-                    key=lambda x: (x[1]['heat_wins'] / max(1, x[1]['heats_participated']), x[1]['heat_wins']),
+                    key=lambda x: (get_heat_rate(x[1]), get_tournament_rate(x[1])),
                     reverse=True
                 )
 
@@ -1596,10 +1603,10 @@ class LeaderboardScreen:
 
             # Column headers
             header_y = panel_y + 28
-            header_wins = self.fonts['tiny'].render("Heats", True, UI_TEXT_DIM)
-            header_rate = self.fonts['tiny'].render("Rate", True, UI_TEXT_DIM)
-            screen.blit(header_wins, (panel_x + panel_width - 95, header_y))
-            screen.blit(header_rate, (panel_x + panel_width - 45, header_y))
+            header_tourney = self.fonts['tiny'].render("Tourney", True, UI_TEXT_DIM)
+            header_heat = self.fonts['tiny'].render("Heat", True, UI_TEXT_DIM)
+            screen.blit(header_tourney, (panel_x + panel_width - 100, header_y))
+            screen.blit(header_heat, (panel_x + panel_width - 45, header_y))
 
             # Ability rankings
             item_y = panel_y + 46
@@ -1612,9 +1619,9 @@ class LeaderboardScreen:
                 # Brighten the color for readability
                 bright_color = tuple(min(255, c + 60) for c in ability_color)
 
-                # Calculate heat win rate
-                win_rate = stats['heat_wins'] / max(1, stats['heats_participated'])
-                win_rate_pct = int(win_rate * 100)
+                # Calculate rates
+                tourney_rate_pct = int(get_tournament_rate(stats) * 100)
+                heat_rate_pct = int(get_heat_rate(stats) * 100)
 
                 # Rank number
                 rank_text = self.fonts['tiny'].render(f"{i+1}.", True, UI_TEXT_DIM)
@@ -1625,15 +1632,15 @@ class LeaderboardScreen:
                 name_text = self.fonts['tiny'].render(display_name, True, bright_color)
                 screen.blit(name_text, (panel_x + 30, item_y))
 
-                # Heat wins as "X/Y" (heat wins out of heats participated)
-                wins_display = f"{stats['heat_wins']}/{stats['heats_participated']}"
-                wins_text = self.fonts['tiny'].render(wins_display, True, VICTORY_GOLD)
-                screen.blit(wins_text, (panel_x + panel_width - 95, item_y))
+                # Tournament win rate percentage
+                tourney_color = (100, 255, 100) if tourney_rate_pct >= 50 else (255, 200, 100) if tourney_rate_pct >= 25 else UI_TEXT
+                tourney_text = self.fonts['tiny'].render(f"{tourney_rate_pct}%", True, tourney_color)
+                screen.blit(tourney_text, (panel_x + panel_width - 95, item_y))
 
-                # Win rate percentage
-                rate_color = (100, 255, 100) if win_rate_pct >= 50 else (255, 200, 100) if win_rate_pct >= 25 else UI_TEXT
-                rate_text = self.fonts['tiny'].render(f"{win_rate_pct}%", True, rate_color)
-                screen.blit(rate_text, (panel_x + panel_width - 40, item_y))
+                # Heat win rate percentage
+                heat_color = (100, 255, 100) if heat_rate_pct >= 50 else (255, 200, 100) if heat_rate_pct >= 25 else UI_TEXT
+                heat_text = self.fonts['tiny'].render(f"{heat_rate_pct}%", True, heat_color)
+                screen.blit(heat_text, (panel_x + panel_width - 40, item_y))
 
                 item_y += line_height
 

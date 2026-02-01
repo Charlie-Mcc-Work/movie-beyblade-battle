@@ -10,7 +10,7 @@ from .constants import (
     BEYBLADE_COLORS, ABILITY_CHANCE, ABILITIES, ARENA_RADIUS, AVATAR_ABILITIES
 )
 from .config import get_config, ModeConfig
-from .beyblade import Beyblade, check_collision, resolve_collision
+from .beyblade import Beyblade, check_collision, resolve_collision, is_immune_to_damage, deal_damage, apply_knockback
 from .arena import Arena
 from .effects import EffectsManager
 from .avatar import AvatarManager, AvatarState
@@ -913,16 +913,15 @@ class Game:
         for beyblade in self.beyblades:
             if beyblade.explosive_triggered:
                 beyblade.explosive_triggered = False
-                # Push all alive beyblades away (Batman immune)
+                # Push all alive beyblades away
                 for other in self.beyblades:
-                    if other.alive and other != beyblade and other.ability != 'batman':
+                    if other.alive and other != beyblade:
                         dx = other.x - beyblade.x
                         dy = other.y - beyblade.y
                         dist = math.sqrt(dx**2 + dy**2)
                         if dist < 300 and dist > 0:  # Explosion radius
                             force = 15 * (1 - dist / 300)  # Stronger when closer
-                            other.vx += (dx / dist) * force
-                            other.vy += (dy / dist) * force
+                            apply_knockback(other, beyblade, dx, dy, force)
                 # Visual and sound
                 self.effects.spawn_collision_sparks(beyblade.x, beyblade.y, 5.0)
                 self.effects.spawn_ability_notification(beyblade.name, 'EXPLOSION!', ABILITIES['explosive']['color'], 'burst')
@@ -975,11 +974,10 @@ class Game:
                             self.effects.spawn_collision_sparks(fireball['x'], fireball['y'], 0.5)
                             self.effects.spawn_ability_notification(beyblade.name, 'REFLECT!', ABILITIES['marty_mauser']['color'], 'ability', 'Marty Mauser')
                             break
-                        # Hit! Apply knockback like a regular collision (Batman immune)
-                        if dist > 0 and beyblade.ability != 'batman':
-                            knockback = 10
-                            beyblade.vx += (dx / dist) * knockback
-                            beyblade.vy += (dy / dist) * knockback
+                        # Hit! Apply knockback
+                        owner = next((b for b in self.beyblades if b.name == fireball['owner_name']), None)
+                        if owner:
+                            apply_knockback(beyblade, owner, dx, dy, 10)
                         self.effects.spawn_collision_sparks(fireball['x'], fireball['y'], 1.5)
                         self.effects.sound.play('hit')
                         fireballs_to_remove.append(fireball)
@@ -1050,8 +1048,9 @@ class Game:
                             self.effects.spawn_collision_sparks(ice['x'], ice['y'], 0.5)
                             self.effects.spawn_ability_notification(beyblade.name, 'REFLECT!', ABILITIES['marty_mauser']['color'], 'ability', 'Marty Mauser')
                             break
-                        # Hit! Freeze the beyblade (Batman immune)
-                        if beyblade.ability != 'batman':
+                        # Hit! Freeze the beyblade
+                        owner = next((b for b in self.beyblades if b.name == ice['owner_name']), None)
+                        if owner and not is_immune_to_damage(beyblade, owner):
                             beyblade.ice_frozen_timer = 60  # 1 second freeze
                             beyblade.vx = 0
                             beyblade.vy = 0
@@ -1104,20 +1103,25 @@ class Game:
         for trail in trails_to_remove:
             self.ice_trails.remove(trail)
 
-        # Handle grenade ability - avatars throw grenades at random arena spots
+        # Handle grenade ability - avatars throw grenades toward center of arena
         for beyblade in self.beyblades:
             if beyblade.ability == 'grenade':  # Continues after death
                 avatar = self.avatar_manager.avatars.get(beyblade.name)
                 if avatar and avatar.state not in (AvatarState.ELIMINATED, AvatarState.LAUNCHING):
                     avatar.grenade_cooldown -= 1
                     if avatar.grenade_cooldown <= 0:
-                        # Pick random target in arena
+                        # Pick random target near center of arena (inner ~35% radius)
                         if self.arena.finals_mode:
-                            target_x = random.uniform(self.arena.rect_left + 50, self.arena.rect_right - 50)
-                            target_y = random.uniform(self.arena.rect_top + 50, self.arena.rect_bottom - 50)
+                            # For rectangle, target the middle third
+                            rect_width = self.arena.rect_right - self.arena.rect_left
+                            rect_height = self.arena.rect_bottom - self.arena.rect_top
+                            center_x = (self.arena.rect_left + self.arena.rect_right) / 2
+                            center_y = (self.arena.rect_top + self.arena.rect_bottom) / 2
+                            target_x = center_x + random.uniform(-rect_width * 0.2, rect_width * 0.2)
+                            target_y = center_y + random.uniform(-rect_height * 0.2, rect_height * 0.2)
                         else:
                             angle = random.uniform(0, 2 * math.pi)
-                            dist = random.uniform(0, self.arena.radius * 0.8)
+                            dist = random.uniform(0, self.arena.radius * 0.35)
                             target_x = self.arena.center_x + math.cos(angle) * dist
                             target_y = self.arena.center_y + math.sin(angle) * dist
 
@@ -1140,21 +1144,21 @@ class Game:
             if grenade['progress'] >= 1.0:
                 # Grenade landed - EXPLODE!
                 tx, ty = grenade['target_x'], grenade['target_y']
-                explosion_radius = 80
+                explosion_radius = 100
+                owner = next((b for b in self.beyblades if b.name == grenade['owner_name']), None)
 
                 for beyblade in self.beyblades:
-                    if beyblade.alive:
+                    if beyblade.alive and owner:
                         dx = beyblade.x - tx
                         dy = beyblade.y - ty
                         dist = math.sqrt(dx**2 + dy**2)
-                        if dist < explosion_radius and dist > 0:
-                            # Knockback like a regular hit (Batman immune)
-                            if beyblade.ability != 'batman':
-                                force = 12 * (1 - dist / explosion_radius)
-                                beyblade.vx += (dx / dist) * force
-                                beyblade.vy += (dy / dist) * force
+                        if dist < explosion_radius:
+                            # Strong knockback and significant damage
+                            damage_mult = 1 - (dist / explosion_radius)  # 100% at center, 0% at edge
+                            apply_knockback(beyblade, owner, dx, dy, 15 * damage_mult)
+                            deal_damage(beyblade, owner, 20 * damage_mult)
 
-                self.effects.spawn_collision_sparks(tx, ty, 4.0)
+                self.effects.spawn_collision_sparks(tx, ty, 5.0)
                 self.effects.sound.play('big_hit')
                 grenades_to_remove.append(grenade)
 
@@ -1227,9 +1231,10 @@ class Game:
                     perp_beam = abs(-dx * math.sin(angle) + dy * math.cos(angle))
 
                     if 0 < along_beam < length and perp_beam < beam['width'] / 2 + beyblade.radius:
-                        # HIT! Apply hitstun then knockback (Batman immune)
+                        # HIT! Apply hitstun then knockback
                         beam['hit_targets'].add(beyblade.name)
-                        if beyblade.ability != 'batman':
+                        owner = next((b for b in self.beyblades if b.name == beam['owner_name']), None)
+                        if owner and not is_immune_to_damage(beyblade, owner):
                             beyblade.hitstun_timer = 15  # 0.25 second hitstun
                             beyblade.vx = 0
                             beyblade.vy = 0
@@ -1297,6 +1302,7 @@ class Game:
             wave_y = wave['start_y'] + math.sin(wave['angle']) * current_dist
 
             # Push beyblades in wave direction
+            owner = next((b for b in self.beyblades if b.name == wave['owner_name']), None)
             for beyblade in self.beyblades:
                 if beyblade.alive and beyblade.name not in wave['hit_targets']:
                     # Check if beyblade is within wave front
@@ -1308,9 +1314,9 @@ class Game:
                     along_dist = dx * math.cos(wave['angle']) + dy * math.sin(wave['angle'])
 
                     if perp_dist < wave['width'] / 2 + beyblade.radius and abs(along_dist) < 40:
-                        # Hit by wave - push in wave direction (Batman immune)
+                        # Hit by wave - push in wave direction
                         wave['hit_targets'].add(beyblade.name)
-                        if beyblade.ability != 'batman':
+                        if owner and not is_immune_to_damage(beyblade, owner):
                             push_force = 10
                             beyblade.vx += math.cos(wave['angle']) * push_force
                             beyblade.vy += math.sin(wave['angle']) * push_force
@@ -1348,15 +1354,12 @@ class Game:
                             dx = other.x - beyblade.x
                             dy = other.y - beyblade.y
                             dist = math.sqrt(dx**2 + dy**2)
-                            if dist > 0:
-                                # Huge knockback to everyone (Batman immune)
-                                if other.ability != 'batman':
-                                    force = 25 * max(0, 1 - dist / 500)
-                                    other.vx += (dx / dist) * force
-                                    other.vy += (dy / dist) * force
-                                    # Also deal damage
-                                    if dist < 200:
-                                        other.take_damage(15 * (1 - dist / 200))
+                            if dist > 0 and dist < 500:
+                                # Huge knockback and damage to everyone
+                                force = 25 * (1 - dist / 500)
+                                apply_knockback(other, beyblade, dx, dy, force)
+                                if dist < 200:
+                                    deal_damage(other, beyblade, 15 * (1 - dist / 200))
                     # Self-destruct
                     beyblade.die()
                     self.effects.spawn_collision_sparks(beyblade.x, beyblade.y, 8.0)
@@ -1434,7 +1437,7 @@ class Game:
                 if beyblade.earthquake_timer <= 0:
                     beyblade.earthquake_timer = 900  # Reset for next quake
                     for other in self.beyblades:
-                        if other.alive and other.ability != 'batman':  # Batman immune
+                        if other.alive and not is_immune_to_damage(other, beyblade):
                             # Random velocity change
                             other.vx += random.uniform(-8, 8)
                             other.vy += random.uniform(-8, 8)
@@ -1446,10 +1449,10 @@ class Game:
                 beyblade.lightning_timer -= 1
                 if beyblade.lightning_timer <= 0:
                     beyblade.lightning_timer = 600  # Reset
-                    targets = [b for b in self.beyblades if b.alive and b != beyblade and b.ability != 'batman']  # Batman immune
+                    targets = [b for b in self.beyblades if b.alive and b != beyblade and not is_immune_to_damage(b, beyblade)]
                     random.shuffle(targets)
                     for target in targets[:3]:  # Up to 3 targets
-                        target.take_damage(5)
+                        deal_damage(target, beyblade, 5)
                         target.vx += random.uniform(-5, 5)
                         target.vy += random.uniform(-5, 5)
                         self.effects.spawn_collision_sparks(target.x, target.y, 2.0)
@@ -1461,8 +1464,8 @@ class Game:
                 beyblade.doomsday_timer -= 1
                 if beyblade.doomsday_timer <= 0:
                     beyblade.doomsday_timer = 9999999  # Only triggers once
-                    # Find 2 beyblades closest to arena edge (excluding self and Batman)
-                    others = [b for b in self.beyblades if b.alive and b != beyblade and b.ability != 'batman']
+                    # Find 2 beyblades closest to arena edge (excluding self and immune beyblades)
+                    others = [b for b in self.beyblades if b.alive and b != beyblade and not is_immune_to_damage(b, beyblade)]
                     if self.arena.finals_mode:
                         # Distance to left/right edge
                         def edge_dist(b):
@@ -1662,24 +1665,28 @@ class Game:
                 traps_to_remove.append(trap)
                 continue
 
+            owner = next((b for b in self.beyblades if b.name == trap['owner_name']), None)
             for beyblade in self.beyblades:
-                if beyblade.alive and beyblade.name != trap['owner_name'] and beyblade.ability != 'batman':
+                if beyblade.alive and beyblade.name != trap['owner_name'] and owner:
                     dx = beyblade.x - trap['x']
                     dy = beyblade.y - trap['y']
                     dist = math.sqrt(dx * dx + dy * dy)
                     if dist < beyblade.radius + 10:
                         if trap['type'] == 'nail':
-                            beyblade.stamina -= 3  # Minor damage
-                            self.effects.spawn_collision_sparks(trap['x'], trap['y'], 0.5)
+                            if deal_damage(beyblade, owner, 3):
+                                self.effects.spawn_collision_sparks(trap['x'], trap['y'], 0.5)
+                                traps_to_remove.append(trap)
+                                break
                         else:  # banana
-                            # Slip effect like ice
-                            angle = random.uniform(0, 2 * math.pi)
-                            speed = max(beyblade.speed, 5)
-                            beyblade.vx = math.cos(angle) * speed * 1.3
-                            beyblade.vy = math.sin(angle) * speed * 1.3
-                            self.effects.spawn_collision_sparks(trap['x'], trap['y'], 0.3)
-                        traps_to_remove.append(trap)
-                        break
+                            if not is_immune_to_damage(beyblade, owner):
+                                # Slip effect like ice
+                                angle = random.uniform(0, 2 * math.pi)
+                                speed = max(beyblade.speed, 5)
+                                beyblade.vx = math.cos(angle) * speed * 1.3
+                                beyblade.vy = math.sin(angle) * speed * 1.3
+                                self.effects.spawn_collision_sparks(trap['x'], trap['y'], 0.3)
+                            traps_to_remove.append(trap)
+                            break
 
         for trap in traps_to_remove:
             if trap in self.traps:
@@ -1843,13 +1850,14 @@ class Game:
                 bullets_to_remove.append(bullet)
                 continue
 
+            owner = next((b for b in self.beyblades if b.name == bullet['owner_name']), None)
             for target in self.beyblades:
-                if target.alive and target.name != bullet['owner_name'] and target.ability != 'batman':
+                if target.alive and target.name != bullet['owner_name']:
                     dx = target.x - bullet['x']
                     dy = target.y - bullet['y']
                     dist = math.sqrt(dx * dx + dy * dy)
                     if dist < target.radius + 4:
-                        # Marty Mauser: reflect projectiles back
+                        # Marty Mauser: reflect projectiles back (always works, even if immune)
                         if target.ability == 'marty_mauser':
                             bullet['vx'] = -bullet['vx']
                             bullet['vy'] = -bullet['vy']
@@ -1858,13 +1866,11 @@ class Game:
                             self.effects.spawn_collision_sparks(bullet['x'], bullet['y'], 0.5)
                             self.effects.spawn_ability_notification(target.name, 'REFLECT!', ABILITIES['marty_mauser']['color'], 'ability', 'Marty Mauser')
                             break
-                        # Hit! Minimal knockback but decent damage
-                        if dist > 0:
-                            knockback = 2
-                            target.vx += (dx / dist) * knockback
-                            target.vy += (dy / dist) * knockback
-                            target.stamina -= 4
-                        self.effects.spawn_collision_sparks(bullet['x'], bullet['y'], 0.3)
+                        # Hit! Apply knockback and significant damage
+                        if owner:
+                            apply_knockback(target, owner, dx, dy, 3)
+                            deal_damage(target, owner, 12)
+                        self.effects.spawn_collision_sparks(bullet['x'], bullet['y'], 0.5)
                         bullets_to_remove.append(bullet)
                         break
 
@@ -1878,7 +1884,7 @@ class Game:
                 # Neo: reset heat if killed in first 0.5 seconds (30 frames), once per heat
                 if beyblade.ability == 'neo' and not self.neo_reset_used_this_heat:
                     frames_alive = self.current_frame - beyblade.neo_spawn_frame
-                    if frames_alive <= 30:
+                    if frames_alive <= 60:  # 1 second at 60fps
                         self.neo_reset_used_this_heat = True  # Mark as used before reset
                         # Big visual notification
                         self.effects.spawn_ability_notification(beyblade.name, 'MATRIX RESET!', ABILITIES['neo']['color'], 'ability', 'Neo')

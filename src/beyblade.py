@@ -312,6 +312,57 @@ def check_collision(b1: Beyblade, b2: Beyblade) -> bool:
     return dist < (b1.radius + b2.radius)
 
 
+def is_red_or_green(color) -> bool:
+    """Check if a color is predominantly red or green."""
+    r, g, b = color
+    # Check if color is predominantly red (R is the dominant channel)
+    is_red = r > 150 and r > g * 1.5 and r > b * 1.5
+    # Check if color is predominantly green (G is the dominant channel)
+    is_green = g > 150 and g > r * 1.5 and g > b * 1.5
+    return is_red or is_green
+
+
+def is_immune_to_damage(target: Beyblade, attacker: Beyblade) -> bool:
+    """Check if target is immune to damage from attacker.
+
+    Returns True if:
+    - Target is Batman (immune to all ability damage)
+    - Target is Little Miss Sunshine and attacker is red or green colored
+    """
+    if target.ability == 'batman':
+        return True
+    if target.ability == 'little_miss_sunshine' and is_red_or_green(attacker.color):
+        return True
+    return False
+
+
+def deal_damage(target: Beyblade, attacker: Beyblade, amount: float) -> bool:
+    """Apply damage to target from attacker, checking immunity first.
+
+    Returns True if damage was applied, False if target was immune.
+    This is the centralized place for immunity checks on direct damage.
+    """
+    if is_immune_to_damage(target, attacker):
+        return False
+    target.take_damage(amount)
+    return True
+
+
+def apply_knockback(target: Beyblade, attacker: Beyblade, dx: float, dy: float, force: float) -> bool:
+    """Apply knockback to target from attacker, checking immunity first.
+
+    dx, dy should be the direction FROM attacker TO target (or explosion center to target).
+    Returns True if knockback was applied, False if target was immune.
+    """
+    if is_immune_to_damage(target, attacker):
+        return False
+    dist = math.sqrt(dx * dx + dy * dy)
+    if dist > 0:
+        target.vx += (dx / dist) * force
+        target.vy += (dy / dist) * force
+    return True
+
+
 def resolve_collision(b1: Beyblade, b2: Beyblade) -> tuple:
     """Resolve collision between two beyblades. Returns collision point, intensity, and ability triggers."""
     dx = b2.x - b1.x
@@ -339,13 +390,13 @@ def resolve_collision(b1: Beyblade, b2: Beyblade) -> tuple:
     if b1.ability == 'zoro' and random.random() < 0.25:
         # b1 slices through b2 - moderate damage but no bounce
         slice_damage = b1.attack * 0.5 + relative_speed * 0.3
-        if b2.ability != 'batman':  # Batman is immune
+        if not is_immune_to_damage(b2, b1):
             b2.stamina -= slice_damage
         triggers.append((b1.name, 'SLICE!', ABILITIES['zoro']['color'], 'Zoro'))
         zoro_slice = True
     if b2.ability == 'zoro' and random.random() < 0.25:
         slice_damage = b2.attack * 0.5 + relative_speed * 0.3
-        if b1.ability != 'batman':
+        if not is_immune_to_damage(b1, b2):
             b1.stamina -= slice_damage
         triggers.append((b2.name, 'SLICE!', ABILITIES['zoro']['color'], 'Zoro'))
         zoro_slice = True
@@ -399,21 +450,8 @@ def resolve_collision(b1: Beyblade, b2: Beyblade) -> tuple:
         b2_dealt_mult *= 5.0
         triggers.append((b2.name, 'REVENGE!', ABILITIES['kill_bill']['color'], 'Kill Bill'))
 
-    # Little Miss Sunshine: no knockback from red or green beyblades (but still takes damage)
-    def is_red_or_green(color):
-        r, g, b = color
-        # Check if color is predominantly red (R is the dominant channel)
-        is_red = r > 120 and r > g and r > b and (r - max(g, b)) > 30
-        # Check if color is predominantly green (G is the dominant channel)
-        is_green = g > 120 and g > r and g > b and (g - max(r, b)) > 30
-        return is_red or is_green
-
-    if b1.ability == 'little_miss_sunshine' and is_red_or_green(b2.color):
-        b1_recv_mult = 0  # No knockback from red/green (but damage still applies via other means)
-        triggers.append((b1.name, 'Color blind!', ABILITIES['little_miss_sunshine']['color'], 'Little Miss Sunshine'))
-    if b2.ability == 'little_miss_sunshine' and is_red_or_green(b1.color):
-        b2_recv_mult = 0  # No knockback from red/green (but damage still applies via other means)
-        triggers.append((b2.name, 'Color blind!', ABILITIES['little_miss_sunshine']['color'], 'Little Miss Sunshine'))
+    # Little Miss Sunshine: immune to DAMAGE (not knockback) from red or green beyblades
+    # This is tracked via a flag and checked in damage-dealing ability code
 
     # Luffy: bounces 2x harder (receives 2x knockback)
     if b1.ability == 'luffy':
@@ -521,26 +559,26 @@ def resolve_collision(b1: Beyblade, b2: Beyblade) -> tuple:
     b2.vx += nx * b2_knockback
     b2.vy += ny * b2_knockback
 
-    # Vampire: steal stamina (Batman immune)
-    if b1.ability == 'vampire' and b2.ability != 'batman':
+    # Vampire: steal stamina
+    if b1.ability == 'vampire' and not is_immune_to_damage(b2, b1):
         steal = 5 + relative_speed * 0.5
         b1.stamina = min(b1.max_stamina, b1.stamina + steal)
         b2.stamina -= steal * 0.5
         triggers.append((b1.name, 'Vampire drain', ABILITIES['vampire']['color']))
-    if b2.ability == 'vampire' and b1.ability != 'batman':
+    if b2.ability == 'vampire' and not is_immune_to_damage(b1, b2):
         steal = 5 + relative_speed * 0.5
         b2.stamina = min(b2.max_stamina, b2.stamina + steal)
         b1.stamina -= steal * 0.5
         triggers.append((b2.name, 'Vampire drain', ABILITIES['vampire']['color']))
 
-    # Venom: apply 200% damage as DoT (Batman immune)
-    if b1.ability == 'venom' and b2.ability != 'batman':
+    # Venom: apply 200% damage as DoT
+    if b1.ability == 'venom' and not is_immune_to_damage(b2, b1):
         base_damage = b1.get_collision_damage(relative_speed)
         venom_damage = base_damage * 2.0  # 200% damage
         b2.venom_dot += venom_damage
         b2.venom_tick_timer = 30  # Start ticking
         triggers.append((b1.name, 'Venom!', ABILITIES['venom']['color']))
-    if b2.ability == 'venom' and b1.ability != 'batman':
+    if b2.ability == 'venom' and not is_immune_to_damage(b1, b2):
         base_damage = b2.get_collision_damage(relative_speed)
         venom_damage = base_damage * 2.0  # 200% damage
         b1.venom_dot += venom_damage
@@ -608,12 +646,12 @@ def resolve_collision(b1: Beyblade, b2: Beyblade) -> tuple:
                 reverser = b1 if b1.ability == 'reversal' else b2
                 triggers.append((reverser.name, 'Reversal!', ABILITIES['reversal']['color']))
 
-    # Parasite: latch onto enemy, share damage (Batman immune)
-    if b1.ability == 'parasite' and b1.parasite_target is None and b2.parasite_host != b1.name and b2.ability != 'batman':
+    # Parasite: latch onto enemy, share damage
+    if b1.ability == 'parasite' and b1.parasite_target is None and b2.parasite_host != b1.name and not is_immune_to_damage(b2, b1):
         b1.parasite_target = b2.name
         b2.parasite_host = b1.name
         triggers.append((b1.name, f'Parasites {b2.name[:10]}!', ABILITIES['parasite']['color']))
-    if b2.ability == 'parasite' and b2.parasite_target is None and b1.parasite_host != b2.name and b1.ability != 'batman':
+    if b2.ability == 'parasite' and b2.parasite_target is None and b1.parasite_host != b2.name and not is_immune_to_damage(b1, b2):
         b2.parasite_target = b1.name
         b1.parasite_host = b2.name
         triggers.append((b2.name, f'Parasites {b1.name[:10]}!', ABILITIES['parasite']['color']))
@@ -645,13 +683,13 @@ def resolve_collision(b1: Beyblade, b2: Beyblade) -> tuple:
     # Alien: juvenile enters first beyblade it hits
     # When infecting, alien becomes hidden (alive=False) until it bursts out
     if b1.ability == 'alien' and b1.alien_is_juvenile and b1.alien_host is None:
-        if b2.ability != 'batman':
+        if not is_immune_to_damage(b2, b1):
             b1.alien_host = b2.name
             b1.alien_gestation_timer = 300  # 5 seconds
             b1.alive = False  # Hide alien while gestating inside host
             triggers.append((b1.name, f'INFECTS {b2.name[:10]}!', ABILITIES['alien']['color'], 'Alien'))
     if b2.ability == 'alien' and b2.alien_is_juvenile and b2.alien_host is None:
-        if b1.ability != 'batman':
+        if not is_immune_to_damage(b1, b2):
             b2.alien_host = b1.name
             b2.alien_gestation_timer = 300  # 5 seconds
             b2.alive = False  # Hide alien while gestating inside host
