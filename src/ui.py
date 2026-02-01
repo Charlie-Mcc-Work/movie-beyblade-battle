@@ -381,6 +381,10 @@ class InputScreen:
         self.quit_button = Button(WINDOW_WIDTH - 100, WINDOW_HEIGHT - 70, 80, 50, "QUIT", fonts['small'],
                                   color=(100, 60, 60), hover_color=(150, 80, 80))
 
+        # Simulate button (bottom center)
+        self.simulate_button = Button(center_x - 60, WINDOW_HEIGHT - 70, 120, 50, "SIMULATE", fonts['small'],
+                                      color=(80, 80, 120), hover_color=(100, 100, 160))
+
         self.error_message = ""
         self.error_timer = 0
 
@@ -433,6 +437,9 @@ class InputScreen:
         # Reposition quit button (bottom right)
         self.quit_button.rect = pygame.Rect(window_width - 100, window_height - 70, 80, 50)
 
+        # Reposition simulate button (bottom center)
+        self.simulate_button.rect = pygame.Rect(center_x - 60, window_height - 70, 120, 50)
+
         # Reposition sequel input (right side, left of queue panel)
         queue_panel_width = 300
         sequel_panel_width = 300
@@ -467,10 +474,12 @@ class InputScreen:
         self.spin_button.update(mouse_pos)
         self.docket_button.update(mouse_pos)
         self.quit_button.update(mouse_pos)
+        self.simulate_button.update(mouse_pos)
         self.sequel_add_button.update(mouse_pos)
 
         entries = self.text_box.get_entries()
         self.battle_button.enabled = len(entries) >= 2
+        self.simulate_button.enabled = len(entries) >= 2
 
         # Queue battle button enabled if queue has at least 2 items
         self.queue_battle_button.enabled = len(self.queue_items) >= 2
@@ -509,6 +518,17 @@ class InputScreen:
     def check_start(self, mouse_pos: tuple, mouse_clicked: bool) -> tuple:
         """Check if battle should start. Returns (should_start, movie_list)"""
         if self.battle_button.is_clicked(mouse_pos, mouse_clicked):
+            entries = self.text_box.get_entries()
+            if len(entries) >= 2:
+                return (True, entries)
+            else:
+                self.error_message = "Need at least 2 movies!"
+                self.error_timer = 120
+        return (False, [])
+
+    def check_simulate(self, mouse_pos: tuple, mouse_clicked: bool) -> tuple:
+        """Check if simulation should start. Returns (should_start, movie_list)"""
+        if self.simulate_button.is_clicked(mouse_pos, mouse_clicked):
             entries = self.text_box.get_entries()
             if len(entries) >= 2:
                 return (True, entries)
@@ -698,23 +718,14 @@ class InputScreen:
             error_rect = error_surface.get_rect(center=(center_x, self.battle_button.rect.bottom + 30))
             screen.blit(error_surface, error_rect)
 
-        # Instructions
-        instructions = [
-            "Tip: Paste your movie list with Ctrl+V",
-            "Each movie becomes a beyblade with random stats"
-        ]
-        y = self.window_height - 60
-        for inst in instructions:
-            text = self.fonts['tiny'].render(inst, True, UI_TEXT_DIM)
-            rect = text.get_rect(center=(center_x, y))
-            screen.blit(text, rect)
-            y += 20
-
         # Golden Docket button (bottom left)
         self.docket_button.draw(screen)
 
         # Quit button (bottom right)
         self.quit_button.draw(screen)
+
+        # Simulate button (bottom center)
+        self.simulate_button.draw(screen)
 
         # Queue panel on the right side
         if self.queue_items:
@@ -834,7 +845,7 @@ class InputScreen:
         # Show result if stopped and has result
         if not self.battle_wheel_spinning and self.battle_wheel_result:
             result_text = self.fonts['small'].render(f"Try: {self.battle_wheel_result}", True, VICTORY_GOLD)
-            result_rect = result_text.get_rect(center=(center_x, center_y + wheel_radius + 45))
+            result_rect = result_text.get_rect(center=(center_x, center_y + wheel_radius + 70))
             screen.blit(result_text, result_rect)
 
     def _draw_sequel_panel(self, screen: pygame.Surface):
@@ -1380,6 +1391,9 @@ class LeaderboardScreen:
         # When True: hides queue, play again, and quit buttons
         self.force_choose = False
 
+        # Flag for simulation mode (no list changes, just stats)
+        self.is_simulation = False
+
     def update_layout(self, window_width: int, window_height: int):
         self.window_width = window_width
         self.window_height = window_height
@@ -1415,7 +1429,7 @@ class LeaderboardScreen:
                 pass
 
     def load_ability_stats(self):
-        """Load ability stats from file. Format: ability|tournament_wins|heat_wins|heats_participated"""
+        """Load ability stats from file. Format: ability|tournament_wins|heat_wins|heats_participated|games_entered"""
         self.ability_stats = {}
         if os.path.exists(self.config.ability_stats_file):
             try:
@@ -1424,22 +1438,24 @@ class LeaderboardScreen:
                         line = line.strip()
                         if '|' in line:
                             parts = line.split('|')
-                            if len(parts) == 4:
+                            if len(parts) >= 4:
                                 ability = parts[0]
                                 self.ability_stats[ability] = {
                                     'tournament_wins': int(parts[1]),
                                     'heat_wins': int(parts[2]),
-                                    'heats_participated': int(parts[3])
+                                    'heats_participated': int(parts[3]),
+                                    'games_entered': int(parts[4]) if len(parts) >= 5 else 0
                                 }
             except:
                 pass
 
-    def set_rankings(self, winner: str, eliminated: list, force_choose: bool = False):
+    def set_rankings(self, winner: str, eliminated: list, force_choose: bool = False, is_simulation: bool = False):
         """Set rankings from winner (1st) and elimination order (last eliminated = 2nd)."""
         self.rankings = [winner] + list(reversed(eliminated))
         self.scroll_offset = 0
         self.winner_name = winner
         self.force_choose = force_choose  # For queue/sequel battles, only allow choosing
+        self.is_simulation = is_simulation  # For simulation, hide choose/queue buttons
         # Reload queue and ability stats
         self.load_queue()
         self.load_ability_wins()
@@ -1482,10 +1498,12 @@ class LeaderboardScreen:
         return self.quit_button.is_clicked(mouse_pos, mouse_clicked)
 
     def check_choose(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        if self.is_simulation:
+            return False
         return self.choose_button.is_clicked(mouse_pos, mouse_clicked)
 
     def check_queue(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
-        if self.force_choose:
+        if self.force_choose or self.is_simulation:
             return False
         return self.queue_button.is_clicked(mouse_pos, mouse_clicked)
 
@@ -1540,19 +1558,28 @@ class LeaderboardScreen:
             screen.blit(scroll_surface, scroll_rect)
 
         # Buttons
-        self.choose_button.draw(screen)
+        if not self.is_simulation:
+            self.choose_button.draw(screen)
         if not self.force_choose:
-            self.queue_button.draw(screen)
+            if not self.is_simulation:
+                self.queue_button.draw(screen)
             self.play_again_button.draw(screen)
             self.quit_button.draw(screen)
 
         # Button labels
-        choose_label = self.fonts['tiny'].render("Watch this movie", True, UI_TEXT_DIM)
-        screen.blit(choose_label, (self.choose_button.rect.centerx - choose_label.get_width() // 2, self.choose_button.rect.bottom + 5))
+        if not self.is_simulation:
+            choose_label = self.fonts['tiny'].render("Watch this movie", True, UI_TEXT_DIM)
+            screen.blit(choose_label, (self.choose_button.rect.centerx - choose_label.get_width() // 2, self.choose_button.rect.bottom + 5))
 
-        if not self.force_choose:
+        if not self.force_choose and not self.is_simulation:
             queue_label = self.fonts['tiny'].render("Add to queue, replay", True, UI_TEXT_DIM)
             screen.blit(queue_label, (self.queue_button.rect.centerx - queue_label.get_width() // 2, self.queue_button.rect.bottom + 5))
+
+        # Simulation mode indicator
+        if self.is_simulation:
+            sim_text = self.fonts['small'].render("SIMULATION MODE - Stats updated, no list changes", True, (150, 150, 200))
+            sim_rect = sim_text.get_rect(center=(center_x, self.window_height - 30))
+            screen.blit(sim_text, sim_rect)
 
         # Ability stats panel on the left side
         if hasattr(self, 'ability_stats') and self.ability_stats:
@@ -1565,25 +1592,32 @@ class LeaderboardScreen:
             self.ability_sort_button.rect = pygame.Rect(panel_x, panel_y - 35, 130, 28)
             self.ability_sort_button.draw(screen)
 
-            # Helper to calculate rates (both use heats_participated as denominator)
+            # Helper to calculate rates
             def get_tournament_rate(stats):
-                return stats['tournament_wins'] / max(1, stats['heats_participated'])
+                # Tournament wins / games entered (made it past round 1)
+                games_entered = stats.get('games_entered', 0)
+                if games_entered == 0:
+                    return 0
+                return stats['tournament_wins'] / games_entered
 
             def get_heat_rate(stats):
                 return stats['heat_wins'] / max(1, stats['heats_participated'])
+
+            # Filter out abilities with no games_entered data
+            valid_abilities = [(k, v) for k, v in self.ability_stats.items() if v.get('games_entered', 0) > 0]
 
             # Sort based on current mode
             if self.ability_sort_mode == 'tournament':
                 # Sort by tournament win rate (descending), then by heat rate as tiebreaker
                 sorted_abilities = sorted(
-                    self.ability_stats.items(),
+                    valid_abilities,
                     key=lambda x: (get_tournament_rate(x[1]), get_heat_rate(x[1])),
                     reverse=True
                 )
             else:
                 # Sort by heat win rate (descending), then by tournament rate as tiebreaker
                 sorted_abilities = sorted(
-                    self.ability_stats.items(),
+                    valid_abilities,
                     key=lambda x: (get_heat_rate(x[1]), get_tournament_rate(x[1])),
                     reverse=True
                 )
@@ -1620,7 +1654,7 @@ class LeaderboardScreen:
                 bright_color = tuple(min(255, c + 60) for c in ability_color)
 
                 # Calculate rates
-                tourney_rate_pct = int(get_tournament_rate(stats) * 100)
+                tourney_rate = get_tournament_rate(stats)
                 heat_rate_pct = int(get_heat_rate(stats) * 100)
 
                 # Rank number
@@ -1633,6 +1667,7 @@ class LeaderboardScreen:
                 screen.blit(name_text, (panel_x + 30, item_y))
 
                 # Tournament win rate percentage
+                tourney_rate_pct = int(tourney_rate * 100)
                 tourney_color = (100, 255, 100) if tourney_rate_pct >= 50 else (255, 200, 100) if tourney_rate_pct >= 25 else UI_TEXT
                 tourney_text = self.fonts['tiny'].render(f"{tourney_rate_pct}%", True, tourney_color)
                 screen.blit(tourney_text, (panel_x + panel_width - 95, item_y))

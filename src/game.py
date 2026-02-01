@@ -89,8 +89,11 @@ class Game:
         self.winner = None
         self.round_number = 1
         self.ability_win_recorded = False  # Prevent double-recording ability wins
+        self.games_entered_recorded = set()  # Track abilities credited with games_entered this tournament
         self.is_queue_battle = False  # True if battling queue.txt movies
         self.is_sequel_battle = False  # True if battling sequels.txt movies
+        self.is_simulation = False  # True if running simulation (no movie list changes)
+        self.sim_auto_advance_timer = 0  # Auto-advance timer for simulation mode (frames)
 
         # Tournament state
         self.heats: list[list[str]] = []
@@ -190,6 +193,7 @@ class Game:
         self.winner = None
         self.round_number = 1
         self.ability_win_recorded = False  # Reset for new tournament
+        self.games_entered_recorded = set()  # Track abilities credited with games_entered this tournament
         self.heat_winners.clear()
         self.current_heat = 0
         self.is_finals = False
@@ -249,13 +253,12 @@ class Game:
             # Create group names showing actual movie count in each group
             group_names = [f"Group {i+1} ({len(g)} movies)" for i, g in enumerate(self.preliminary_groups)]
 
-            # Group beyblades get abilities just like regular beyblades
-            group_ability_pool = list(ABILITIES.keys())
-            random.shuffle(group_ability_pool)
+            # All group beyblades get the SAME random ability (amadeus banned)
+            group_ability_pool = [k for k in ABILITIES.keys() if k != 'amadeus']
+            shared_ability = random.choice(group_ability_pool)
             for i, group_name in enumerate(group_names):
                 color = BEYBLADE_COLORS[i % len(BEYBLADE_COLORS)]
-                ability_key = group_ability_pool[i % len(group_ability_pool)]
-                self.movie_abilities[group_name] = (ability_key, color)
+                self.movie_abilities[group_name] = (shared_ability, color)
 
             # Set up the preliminary battle with group beyblades
             self.heats = [group_names]
@@ -320,10 +323,8 @@ class Game:
         is_final_battle = (self.is_finals or len(self.heats) == 1) and not self.is_preliminary
         self.arena.set_finals_mode(is_final_battle)
 
-        # Use smaller preliminary arena with pillars for the group stage
-        if self.is_preliminary and heat_index == 0:
-            self.arena.set_preliminary_mode(True)
-        elif not is_final_battle:
+        # Use normal arena for all non-finals battles (including preliminary)
+        if not is_final_battle:
             self.arena.set_preliminary_mode(False)
 
         self._spawn_beyblades(movies)
@@ -412,20 +413,23 @@ class Game:
 
             self.beyblades.append(beyblade)
 
-            # Naruto: create 2 clones, each with 1/3 HP (including original)
+            # Naruto: create 5 clones, each with 1/6 HP (including original = 6 total)
             if beyblade.ability == 'naruto' and not beyblade.naruto_cloned:
                 beyblade.naruto_cloned = True
-                # Split HP into thirds
-                third_hp = beyblade.max_stamina / 3
-                beyblade.stamina = third_hp
-                beyblade.max_stamina = third_hp
+                # Split HP into sixths
+                sixth_hp = beyblade.max_stamina / 6
+                beyblade.stamina = sixth_hp
+                beyblade.max_stamina = sixth_hp
 
-                # Create 2 clones - spawn in distinct positions to avoid immediate collision
+                # Create 5 clones - spawn in distinct positions to avoid immediate collision
                 clone_offsets = [
-                    (80, 40),   # Clone 1: offset right and down
-                    (-80, -40), # Clone 2: offset left and up
+                    (80, 0),    # Clone 1: right
+                    (-80, 0),   # Clone 2: left
+                    (40, 70),   # Clone 3: down-right
+                    (-40, 70),  # Clone 4: down-left
+                    (0, -80),   # Clone 5: up
                 ]
-                for clone_num in range(2):
+                for clone_num in range(5):
                     offset_x, offset_y = clone_offsets[clone_num]
                     clone = Beyblade(f"{movie} (Clone {clone_num + 1})", x, y, i)
                     clone.vx = vx + random.uniform(-2, 2)
@@ -435,8 +439,8 @@ class Game:
                     clone.ability = 'naruto'
                     clone.ability_data = beyblade.ability_data.copy() if beyblade.ability_data else None
                     clone.color = beyblade.color
-                    clone.stamina = third_hp
-                    clone.max_stamina = third_hp
+                    clone.stamina = sixth_hp
+                    clone.max_stamina = sixth_hp
                     clone.is_clone = True
                     clone.original_name = movie
                     clone.naruto_cloned = True  # Prevent clones from cloning
@@ -620,13 +624,23 @@ class Game:
             if should_start:
                 self.is_queue_battle = False
                 self.is_sequel_battle = False
+                self.is_simulation = False
                 self.start_battle(movie_list)
+
+            # Check for simulation start
+            should_simulate, sim_movies = self.input_screen.check_simulate(mouse_pos, mouse_clicked)
+            if should_simulate:
+                self.is_queue_battle = False
+                self.is_sequel_battle = False
+                self.is_simulation = True
+                self.start_battle(sim_movies)
 
             # Check for queue battle start
             should_start_queue, queue_movies = self.input_screen.check_queue_battle(mouse_pos, mouse_clicked)
             if should_start_queue:
                 self.is_queue_battle = True
                 self.is_sequel_battle = False
+                self.is_simulation = False
                 self.start_battle(queue_movies)
 
             # Check for sequel battle start
@@ -634,6 +648,7 @@ class Game:
             if should_start_sequel:
                 self.is_queue_battle = False
                 self.is_sequel_battle = True
+                self.is_simulation = False
                 self.start_battle(sequel_movies)
 
             # Check for queue item click (to remove from queue)
@@ -707,14 +722,26 @@ class Game:
             self.heat_transition_screen.update(mouse_pos)
             if self.heat_transition_screen.check_continue(mouse_pos, mouse_clicked):
                 self._continue_after_heat()
+            # Auto-advance in simulation mode after 1 second
+            elif self.is_simulation:
+                self.sim_auto_advance_timer -= 1
+                if self.sim_auto_advance_timer <= 0:
+                    self._continue_after_heat()
 
         elif self.state == STATE_VICTORY:
             self.victory_screen.update(mouse_pos)
             if self.victory_screen.check_leaderboard(mouse_pos, mouse_clicked):
                 # Force choosing for queue/sequel battles (no play again, quit, or queue options)
                 force_choose = self.is_queue_battle or self.is_sequel_battle
-                self.leaderboard_screen.set_rankings(self.winner, self.all_eliminated, force_choose)
+                self.leaderboard_screen.set_rankings(self.winner, self.all_eliminated, force_choose, self.is_simulation)
                 self.state = STATE_LEADERBOARD
+            # Auto-advance in simulation mode after 1 second
+            elif self.is_simulation:
+                self.sim_auto_advance_timer -= 1
+                if self.sim_auto_advance_timer <= 0:
+                    force_choose = self.is_queue_battle or self.is_sequel_battle
+                    self.leaderboard_screen.set_rankings(self.winner, self.all_eliminated, force_choose, self.is_simulation)
+                    self.state = STATE_LEADERBOARD
 
         elif self.state == STATE_LEADERBOARD:
             self.leaderboard_screen.update(mouse_pos)
@@ -724,6 +751,7 @@ class Game:
             if self.leaderboard_screen.check_play_again(mouse_pos, mouse_clicked):
                 self.is_queue_battle = False
                 self.is_sequel_battle = False
+                self.is_simulation = False
                 self.state = STATE_INPUT
             elif self.leaderboard_screen.check_quit(mouse_pos, mouse_clicked):
                 self.running = False
@@ -732,12 +760,14 @@ class Game:
                 self._choose_movie(self.winner)
                 self.is_queue_battle = False
                 self.is_sequel_battle = False
+                self.is_simulation = False
                 self.state = STATE_INPUT
             elif self.leaderboard_screen.check_queue(mouse_pos, mouse_clicked):
                 # QUEUE: Move winner from movies.txt to queue.txt and restart
                 self._queue_movie(self.winner)
                 self.is_queue_battle = False
                 self.is_sequel_battle = False
+                self.is_simulation = False
                 self.state = STATE_INPUT
 
         elif self.state == STATE_DOCKET_SELECT:
@@ -1417,11 +1447,12 @@ class Game:
                     # Reset cooldown (random 5-20 seconds)
                     beyblade.goku_teleport_cooldown = random.randint(300, 1200)
 
-        # Last Stand: activate at 10% HP, invincible for 5 seconds
+        # Last Stand: activate at 10% HP, invincible for 5 seconds (once per heat)
         for beyblade in self.beyblades:
             if beyblade.alive and beyblade.ability == 'last_stand':
-                if not beyblade.last_stand_active and beyblade.stamina <= beyblade.max_stamina * 0.1:
+                if not beyblade.last_stand_active and not beyblade.last_stand_used and beyblade.stamina <= beyblade.max_stamina * 0.1:
                     beyblade.last_stand_active = True
+                    beyblade.last_stand_used = True  # Only triggers once
                     beyblade.last_stand_timer = 300  # 5 seconds
                     self.effects.spawn_ability_notification(beyblade.name, 'LAST STAND!', ABILITIES['last_stand']['color'], 'ability')
                 if beyblade.last_stand_active:
@@ -2109,7 +2140,7 @@ class Game:
                 f.write(f"{ability}: {count}\n")
 
     def _load_ability_stats(self):
-        """Load ability stats from file. Format: ability|tournament_wins|heat_wins|heats_participated"""
+        """Load ability stats from file. Format: ability|tournament_wins|heat_wins|heats_participated|games_entered"""
         ability_stats = {}
         if os.path.exists(self.config.ability_stats_file):
             try:
@@ -2118,12 +2149,13 @@ class Game:
                         line = line.strip()
                         if '|' in line:
                             parts = line.split('|')
-                            if len(parts) == 4:
+                            if len(parts) >= 4:
                                 ability = parts[0]
                                 ability_stats[ability] = {
                                     'tournament_wins': int(parts[1]),
                                     'heat_wins': int(parts[2]),
-                                    'heats_participated': int(parts[3])
+                                    'heats_participated': int(parts[3]),
+                                    'games_entered': int(parts[4]) if len(parts) >= 5 else 0
                                 }
             except:
                 pass
@@ -2134,7 +2166,8 @@ class Game:
         with open(self.config.ability_stats_file, 'w', encoding='utf-8') as f:
             for ability in sorted(ability_stats.keys()):
                 stats = ability_stats[ability]
-                f.write(f"{ability}|{stats['tournament_wins']}|{stats['heat_wins']}|{stats['heats_participated']}\n")
+                games_entered = stats.get('games_entered', 0)
+                f.write(f"{ability}|{stats['tournament_wins']}|{stats['heat_wins']}|{stats['heats_participated']}|{games_entered}\n")
 
     def _record_heat_stats(self, participants: list, survivors: list):
         """Record heat participation and wins for all abilities in this heat.
@@ -2150,8 +2183,18 @@ class Game:
                 ability_key, _ = self.movie_abilities[movie_name]
                 if ability_key:
                     if ability_key not in ability_stats:
-                        ability_stats[ability_key] = {'tournament_wins': 0, 'heat_wins': 0, 'heats_participated': 0}
+                        ability_stats[ability_key] = {'tournament_wins': 0, 'heat_wins': 0, 'heats_participated': 0, 'games_entered': 0}
                     ability_stats[ability_key]['heats_participated'] += 1
+
+                    # Credit games_entered once per movie per tournament
+                    # (This function is only called for non-preliminary heats, so movies
+                    # eliminated in preliminary group stage don't get credit)
+                    # Track by movie name so same movie in multiple heats only counts once,
+                    # but two movies with same ability each count separately
+                    if movie_name not in self.games_entered_recorded:
+                        ability_stats[ability_key]['games_entered'] += 1
+                        self.games_entered_recorded.add(movie_name)
+
                     if movie_name in survivor_set:
                         ability_stats[ability_key]['heat_wins'] += 1
 
@@ -2170,7 +2213,7 @@ class Game:
 
         ability_stats = self._load_ability_stats()
         if ability_key not in ability_stats:
-            ability_stats[ability_key] = {'tournament_wins': 0, 'heat_wins': 0, 'heats_participated': 0}
+            ability_stats[ability_key] = {'tournament_wins': 0, 'heat_wins': 0, 'heats_participated': 0, 'games_entered': 0}
         ability_stats[ability_key]['tournament_wins'] += 1
         self._save_ability_stats(ability_stats)
 
@@ -2625,6 +2668,7 @@ class Game:
                 is_preliminary_complete=True
             )
             self.pending_start_main_tournament = True
+            self.sim_auto_advance_timer = 60  # 1 second at 60 FPS
             self.state = STATE_HEAT_TRANSITION
             return
 
@@ -2647,6 +2691,7 @@ class Game:
                 self.ability_win_recorded = True
             self.effects.sound.play('victory')
             self.avatar_manager.sync_with_beyblades(self.beyblades, winner_name=self.winner)
+            self.sim_auto_advance_timer = 60  # 1 second at 60 FPS
             self.state = STATE_VICTORY
         else:
             # Add survivors to heat winners (skip clones and fragments to prevent duplicates)
@@ -2671,6 +2716,7 @@ class Game:
                 )
                 self.pending_next_heat = self.current_heat + 1
                 self.pending_is_finals = False
+                self.sim_auto_advance_timer = 60  # 1 second at 60 FPS
                 self.state = STATE_HEAT_TRANSITION
             else:
                 # All heats done - show transition to finals
@@ -2682,6 +2728,7 @@ class Game:
                 )
                 self.pending_next_heat = 0
                 self.pending_is_finals = True
+                self.sim_auto_advance_timer = 60  # 1 second at 60 FPS
                 self.state = STATE_HEAT_TRANSITION
 
     def _continue_after_heat(self):

@@ -58,6 +58,7 @@ class Beyblade:
 
         # New ability state
         self.last_stand_active = False
+        self.last_stand_used = False  # Prevent re-triggering after it ends
         self.last_stand_timer = 0    # 5 seconds = 300 frames
         self.inflation_scale = 1.0   # Current size multiplier
         self.shrink_scale = 1.0      # Current size multiplier (for victims of shrinking)
@@ -72,7 +73,7 @@ class Beyblade:
         self.venom_dot = 0.0  # Damage to apply over time from venom
         self.venom_tick_timer = 0  # Timer for venom damage ticks
         self.goku_teleport_cooldown = random.randint(300, 1200)  # 5-20 seconds
-        self.luffy_edge_saves = 2  # Luffy can survive 2 edge hits per heat
+        self.luffy_edge_saves = 4  # Luffy can survive 4 edge hits per heat
         self.is_clone = False  # True if this is a Naruto clone
         self.original_name = None  # Name of original beyblade if this is a clone
         self.naruto_cloned = False  # True if Naruto has already created clones

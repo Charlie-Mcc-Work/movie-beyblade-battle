@@ -406,7 +406,7 @@ ABILITIES = {
         'name': 'Naruto',
         'color': (255, 150, 50),
         'type': 'triggered',
-        'description': 'Creates 2 clones, each with 1/3 HP',
+        'description': 'Creates 5 clones, each with 1/6 HP',
     },
     'goku': {
         'name': 'Goku',
@@ -437,7 +437,7 @@ ABILITIES = {
         'name': 'Luffy',
         'color': (200, 50, 50),
         'type': 'passive',
-        'description': '2x bounce, survives 2 edge hits',
+        'description': '2x bounce, survives 4 edge hits',
     },
     'andy_dufresne': {
         'name': 'Andy Dufresne',
