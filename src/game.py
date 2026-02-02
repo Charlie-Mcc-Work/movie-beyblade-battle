@@ -104,11 +104,11 @@ class Game:
         self.advancers_per_heat = 2  # Top N from each heat advance
         self.max_per_heat = 11  # Max beyblades per heat
 
-        # Preliminary round state (for large tournaments >55 movies)
+        # Preliminary round state (for large tournaments >54 movies)
         self.preliminary_groups: list[list[str]] = []  # Groups of movies for preliminary battles
         self.preliminary_winning_movies: list[str] = []  # Movies from the winning group
         self.is_preliminary = False  # True when running preliminary rounds
-        self.preliminary_max_size = 55  # Max movies per preliminary group
+        self.preliminary_max_size = 54  # Max movies per preliminary group
 
         # Persistent movie data (survives across heats)
         self.movie_abilities: dict[str, tuple] = {}  # name -> (ability_key, color)
@@ -203,12 +203,73 @@ class Game:
         self.portals.clear()
         self.andy_respawn_used = set()  # Track Andy Dufresne respawns
 
-        # Pre-assign abilities - 100% chance, unique abilities distributed first
-        # Create a pool of abilities that ensures each ability is used once before repeating
+        # Shuffle movies for random placement
+        random.shuffle(movie_list)
+
+        # Check if we need a preliminary round (>54 movies)
+        # If so, DON'T assign abilities yet - wait until winning group is determined
+        if len(movie_list) > self.preliminary_max_size:
+            # Split movies into groups of max 54
+            self.preliminary_groups = []
+            for i in range(0, len(movie_list), self.preliminary_max_size):
+                group = movie_list[i:i + self.preliminary_max_size]
+                if group:
+                    self.preliminary_groups.append(group)
+
+            self.is_preliminary = True
+
+            # Create group names showing actual movie count in each group
+            group_names = [f"Group {i+1} ({len(g)} movies)" for i, g in enumerate(self.preliminary_groups)]
+
+            # All group beyblades get the SAME random ability (amadeus, prestige, copycat, deadpool banned)
+            banned_group_abilities = {'amadeus', 'the_prestige', 'copycat', 'deadpool'}
+            group_ability_pool = [k for k in ABILITIES.keys() if k not in banned_group_abilities]
+            shared_ability = random.choice(group_ability_pool)
+            for i, group_name in enumerate(group_names):
+                color = BEYBLADE_COLORS[i % len(BEYBLADE_COLORS)]
+                self.movie_abilities[group_name] = (shared_ability, color)
+
+            # Set up the preliminary battle with group beyblades
+            self.heats = [group_names]
+            self._start_heat(0)
+        else:
+            # Normal tournament flow - assign abilities now (no preliminary)
+            self.is_preliminary = False
+            self.preliminary_groups.clear()
+
+            # Assign abilities to movies
+            movie_list = self._assign_abilities_to_movies(movie_list)
+
+            # If few movies, just run single battle (no heats needed)
+            if len(movie_list) <= self.max_per_heat:
+                self.heats = [movie_list.copy()]  # Use copy to avoid reference issues
+                if self.web_mode:
+                    print(f"[Battle] Single heat with {len(movie_list)} movies")
+            else:
+                # Split into heats (slicing creates new lists)
+                self.heats = []
+                for i in range(0, len(movie_list), self.max_per_heat):
+                    heat = movie_list[i:i + self.max_per_heat]
+                    if heat:
+                        self.heats.append(heat)
+                if self.web_mode:
+                    print(f"[Battle] {len(self.heats)} heats created: {[len(h) for h in self.heats]} movies each")
+
+            # Start first heat
+            self._start_heat(0)
+
+        self.state = STATE_BATTLE
+        self.speed_multiplier = 1
+        self.battle_hud.current_speed = 1
+
+    def _assign_abilities_to_movies(self, movie_list: list) -> list:
+        """Assign abilities to movies. Each ability is used once before repeating.
+        Returns the updated movie list (with prestige duplicates added)."""
         ability_keys = list(ABILITIES.keys())
         ability_pool = []
 
         # Build pool: each ability appears once per "round", shuffle each round
+        # This ensures each ability is used once before any repeats
         num_rounds = (len(movie_list) // len(ability_keys)) + 2  # Extra rounds for prestige duplicates
         for _ in range(num_rounds):
             round_abilities = ability_keys.copy()
@@ -236,59 +297,10 @@ class Game:
         for movie in prestige_movies:
             movie_list.append(f"{movie} (Double)")
 
-        # Shuffle all movies (including prestige duplicates) for random heat placement
+        # Shuffle to mix in prestige duplicates
         random.shuffle(movie_list)
 
-        # Check if we need a preliminary round (>55 movies)
-        if len(movie_list) > self.preliminary_max_size:
-            # Split movies into groups of max 55
-            self.preliminary_groups = []
-            for i in range(0, len(movie_list), self.preliminary_max_size):
-                group = movie_list[i:i + self.preliminary_max_size]
-                if group:
-                    self.preliminary_groups.append(group)
-
-            self.is_preliminary = True
-
-            # Create group names showing actual movie count in each group
-            group_names = [f"Group {i+1} ({len(g)} movies)" for i, g in enumerate(self.preliminary_groups)]
-
-            # All group beyblades get the SAME random ability (amadeus banned)
-            group_ability_pool = [k for k in ABILITIES.keys() if k != 'amadeus']
-            shared_ability = random.choice(group_ability_pool)
-            for i, group_name in enumerate(group_names):
-                color = BEYBLADE_COLORS[i % len(BEYBLADE_COLORS)]
-                self.movie_abilities[group_name] = (shared_ability, color)
-
-            # Set up the preliminary battle with group beyblades
-            self.heats = [group_names]
-            self._start_heat(0)
-        else:
-            # Normal tournament flow
-            self.is_preliminary = False
-            self.preliminary_groups.clear()
-
-            # If few movies, just run single battle (no heats needed)
-            if len(movie_list) <= self.max_per_heat:
-                self.heats = [movie_list.copy()]  # Use copy to avoid reference issues
-                if self.web_mode:
-                    print(f"[Battle] Single heat with {len(movie_list)} movies")
-            else:
-                # Split into heats (slicing creates new lists)
-                self.heats = []
-                for i in range(0, len(movie_list), self.max_per_heat):
-                    heat = movie_list[i:i + self.max_per_heat]
-                    if heat:
-                        self.heats.append(heat)
-                if self.web_mode:
-                    print(f"[Battle] {len(self.heats)} heats created: {[len(h) for h in self.heats]} movies each")
-
-            # Start first heat
-            self._start_heat(0)
-
-        self.state = STATE_BATTLE
-        self.speed_multiplier = 1
-        self.battle_hud.current_speed = 1
+        return movie_list
 
     def _start_heat(self, heat_index: int, is_neo_reset: bool = False):
         """Start a specific heat battle."""
@@ -383,6 +395,11 @@ class Game:
                 beyblade.lightning_timer = 600  # 10 seconds
             if beyblade.ability == 'doomsday':
                 beyblade.doomsday_timer = 1800  # 30 seconds
+
+            # Zoro: starts going the opposite direction (counterclockwise, lost as usual)
+            if beyblade.ability == 'zoro':
+                beyblade.vx = -beyblade.vx
+                beyblade.vy = -beyblade.vy
 
             # Truman: spawn in center of arena
             if beyblade.ability == 'truman':
@@ -2022,8 +2039,6 @@ class Game:
             return 'gambler_win'
         elif 'gambler lose' in text_lower:
             return 'gambler_lose'
-        elif 'mirror' in text_lower:
-            return 'ability'
         return 'ability'
 
     def _get_base_movie_name(self, movie_name: str) -> str:
@@ -2758,7 +2773,10 @@ class Game:
         self.is_finals = False
 
         movie_list = movie_list.copy()
-        random.shuffle(movie_list)
+
+        # Assign abilities NOW (after preliminary group selection)
+        # This ensures each ability is used once before repeating
+        movie_list = self._assign_abilities_to_movies(movie_list)
 
         # Set up heats for the main tournament
         if len(movie_list) <= self.max_per_heat:

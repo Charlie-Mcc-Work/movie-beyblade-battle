@@ -28,7 +28,6 @@ little_miss_sunshine|0|1|2
 luffy|0|0|1
 marty_mauser|0|0|1
 marty_mcfly|0|0|1
-mirror|0|0|1
 momentum|0|0|1
 mutually_assured|0|2|3
 naruto|0|0|2

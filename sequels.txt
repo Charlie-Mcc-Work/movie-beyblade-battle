@@ -21,7 +21,6 @@ Doctor Dolittle 2
 Nutty Professor II
 The Santa Clause 2
 Red 2
-Jurassic Park
 Madagascar 2
 Halloween 2
 Anaconda 2
@@ -29,3 +28,6 @@ Argyle
 Home Alone 2
 Hunger Games 3
 Alien 4
+Starship Troopers
+Jurassic Park II
+Doctor Sleep

@@ -592,25 +592,12 @@ def resolve_collision(b1: Beyblade, b2: Beyblade) -> tuple:
     if b2.ability == 'rage' and b2_knockback > 8:
         b2.rage_active = True
 
-    # Mirror: chance to copy opponent's ability
-    if b1.ability == 'mirror' and b2.ability and b2.ability != 'mirror':
-        if random.random() < ABILITIES['mirror']['trigger_chance']:
-            b1.ability = b2.ability
-            b1.ability_data = ABILITIES[b2.ability].copy()
-            triggers.append((b1.name, f'Mirror -> {b1.ability_data["name"]}', ABILITIES['mirror']['color']))
-    if b2.ability == 'mirror' and b1.ability and b1.ability != 'mirror':
-        if random.random() < ABILITIES['mirror']['trigger_chance']:
-            old_b1_ability = b1.ability  # Use original, not potentially mirrored
-            b2.ability = old_b1_ability
-            b2.ability_data = ABILITIES[old_b1_ability].copy()
-            triggers.append((b2.name, f'Mirror -> {b2.ability_data["name"]}', ABILITIES['mirror']['color']))
-
     # Copycat: guaranteed copy on first hit (one-time)
-    if b1.ability == 'copycat' and b2.ability and b2.ability not in ('copycat', 'mirror'):
+    if b1.ability == 'copycat' and b2.ability and b2.ability != 'copycat':
         b1.ability = b2.ability
         b1.ability_data = ABILITIES[b2.ability].copy()
         triggers.append((b1.name, f'Copycat -> {b1.ability_data["name"]}', ABILITIES['copycat']['color']))
-    if b2.ability == 'copycat' and b1.ability and b1.ability not in ('copycat', 'mirror'):
+    if b2.ability == 'copycat' and b1.ability and b1.ability != 'copycat':
         old_b1_ability = b1.ability
         b2.ability = old_b1_ability
         b2.ability_data = ABILITIES[old_b1_ability].copy()

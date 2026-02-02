@@ -275,13 +275,6 @@ ABILITIES = {
         'type': 'passive',
         'description': 'Hits randomly 2x or 0.5x',
     },
-    'mirror': {
-        'name': 'Mirror',
-        'color': (200, 200, 255),
-        'type': 'triggered',
-        'description': 'Copy ability on hit',
-        'trigger_chance': 0.25,
-    },
     'momentum': {
         'name': 'Momentum',
         'color': (100, 200, 255),
@@ -430,7 +423,7 @@ ABILITIES = {
         'name': 'Zoro',
         'color': (50, 150, 50),
         'type': 'triggered',
-        'description': '25% chance to slice through enemies',
+        'description': 'Starts counterclockwise, 25% slice through',
         'trigger_chance': 0.25,
     },
     'luffy': {

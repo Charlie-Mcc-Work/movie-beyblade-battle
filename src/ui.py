@@ -1394,6 +1394,10 @@ class LeaderboardScreen:
         # Flag for simulation mode (no list changes, just stats)
         self.is_simulation = False
 
+        # Ability leaderboard scroll
+        self.ability_scroll_offset = 0
+        self.ability_panel_rect = None  # Set during draw for scroll hit detection
+
     def update_layout(self, window_width: int, window_height: int):
         self.window_width = window_width
         self.window_height = window_height
@@ -1483,9 +1487,19 @@ class LeaderboardScreen:
 
     def handle_scroll(self, event: pygame.event.Event):
         if event.type == pygame.MOUSEWHEEL:
-            self.scroll_offset -= event.y * 3
-            max_scroll = max(0, len(self.rankings) - 15)
-            self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
+            mouse_pos = pygame.mouse.get_pos()
+
+            # Check if scrolling over ability leaderboard panel
+            if self.ability_panel_rect and self.ability_panel_rect.collidepoint(mouse_pos):
+                self.ability_scroll_offset -= event.y * 3  # 3 items per scroll
+                # max_scroll is calculated in draw(), but we can estimate here
+                max_scroll = max(0, len(self.ability_stats) - 20)
+                self.ability_scroll_offset = max(0, min(self.ability_scroll_offset, max_scroll))
+            else:
+                # Default: scroll the rankings
+                self.scroll_offset -= event.y * 3
+                max_scroll = max(0, len(self.rankings) - 15)
+                self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
 
     def check_play_again(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
         if self.force_choose:
@@ -1622,8 +1636,12 @@ class LeaderboardScreen:
                     reverse=True
                 )
 
-            max_items = min(20, len(sorted_abilities))
-            panel_height = max_items * line_height + 55
+            max_visible = 20  # Show up to 20 items at once
+            total_abilities = len(sorted_abilities)
+            panel_height = min(max_visible, total_abilities) * line_height + 55
+
+            # Store panel rect for scroll detection
+            self.ability_panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
 
             # Panel background
             panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
@@ -1642,9 +1660,24 @@ class LeaderboardScreen:
             screen.blit(header_tourney, (panel_x + panel_width - 100, header_y))
             screen.blit(header_heat, (panel_x + panel_width - 45, header_y))
 
-            # Ability rankings
-            item_y = panel_y + 46
-            for i, (ability_key, stats) in enumerate(sorted_abilities[:max_items]):
+            # Scroll indicator if there are more items
+            if total_abilities > max_visible:
+                scroll_info = self.fonts['tiny'].render(f"({self.ability_scroll_offset + 1}-{min(self.ability_scroll_offset + max_visible, total_abilities)} of {total_abilities})", True, UI_TEXT_DIM)
+                screen.blit(scroll_info, (panel_x + 150, panel_y + 8))
+
+            # Clamp scroll offset
+            max_scroll = max(0, total_abilities - max_visible)
+            self.ability_scroll_offset = max(0, min(self.ability_scroll_offset, max_scroll))
+
+            # Ability rankings (with scroll offset)
+            content_y = panel_y + 46
+            content_height = max_visible * line_height
+            clip_rect = pygame.Rect(panel_x, content_y, panel_width, content_height)
+            screen.set_clip(clip_rect)
+
+            item_y = content_y
+            for i in range(self.ability_scroll_offset, min(self.ability_scroll_offset + max_visible, total_abilities)):
+                ability_key, stats = sorted_abilities[i]
                 # Get ability display name and color
                 ability_data = ABILITIES.get(ability_key, {})
                 ability_name = ability_data.get('name', ability_key)
@@ -1678,6 +1711,9 @@ class LeaderboardScreen:
                 screen.blit(heat_text, (panel_x + panel_width - 40, item_y))
 
                 item_y += line_height
+
+            # Reset clip
+            screen.set_clip(None)
 
         # Queue panel on the right side (non-clickable)
         if self.queue_items:
