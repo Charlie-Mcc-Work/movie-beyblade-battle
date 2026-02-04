@@ -1,4 +1,5 @@
 amadeus: 15
+american_psycho: 1
 andy_dufresne: 1
 barry_lyndon: 1
 batman: 4

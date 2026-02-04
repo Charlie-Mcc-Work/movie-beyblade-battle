@@ -2559,17 +2559,8 @@ class Game:
         self.docket_data['shit'] = self._load_docket_file(self.config.shit_docket_file)
         print(f"[Docket] Loaded docket files - golden: {len(self.docket_data['golden'])} entries")
 
-        # Load lockouts and filter locked-out people from ALL dockets
+        # Load lockouts (used only to prevent claiming, not to filter wheel entries)
         self._load_golden_lockouts()
-        locked_names = set(self.golden_lockouts.keys())
-        for name in locked_names:
-            if name in self.docket_data['golden']:
-                del self.docket_data['golden'][name]
-            if name in self.docket_data['diamond']:
-                del self.docket_data['diamond'][name]
-            if name in self.docket_data['shit']:
-                del self.docket_data['shit'][name]
-        print(f"[Docket] Filtered out locked users from all dockets: {locked_names}")
 
         # In girlfriend mode, skip participant selection and go straight to spin
         if self.config.permanent_members and not self.config.can_add_members:
