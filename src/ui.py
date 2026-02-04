@@ -410,6 +410,22 @@ class InputScreen:
         self.docket_picks = {'golden': [], 'diamond': [], 'shit': []}
         self.load_docket_picks()
 
+        # Golden docket lockouts display
+        self.lockouts = {}  # {name: count} - count = movies until unlocked
+        self.load_lockouts()
+
+        # Actor queue (panel at x=310, y=480)
+        self.actors = {}  # {name: [movies]}
+        self.actor_rects = []  # Clickable areas for actors
+        self.actor_input = TextBox(315, 512, 230, 42, fonts['tiny'])
+        self.load_actors()
+
+        # Director queue (panel at x=560, y=480)
+        self.directors = {}  # {name: [movies]}
+        self.director_rects = []  # Clickable areas for directors
+        self.director_input = TextBox(565, 512, 230, 42, fonts['tiny'])
+        self.load_directors()
+
     def update_layout(self, window_width: int, window_height: int):
         """Update positions based on new window size."""
         self.window_width = window_width
@@ -460,14 +476,36 @@ class InputScreen:
                     self.sequel_input.cursor_pos = 0
                     self.sequel_input.cursor_line = 0
                 return  # Don't pass Enter to text boxes
+            if self.director_input.active:
+                text = self.director_input.text.strip()
+                print(f"[Input] Enter pressed in director_input, text='{text}'")
+                if text:
+                    self.add_director_from_paste(text)
+                    self.director_input.text = ""
+                    self.director_input.cursor_pos = 0
+                    self.director_input.cursor_line = 0
+                return
+            if self.actor_input.active:
+                text = self.actor_input.text.strip()
+                print(f"[Input] Enter pressed in actor_input, text='{text}'")
+                if text:
+                    self.add_actor_from_paste(text)
+                    self.actor_input.text = ""
+                    self.actor_input.cursor_pos = 0
+                    self.actor_input.cursor_line = 0
+                return
 
         self.text_box.handle_event(event)
         self.sequel_input.handle_event(event)
+        self.director_input.handle_event(event)
+        self.actor_input.handle_event(event)
 
     def update(self, mouse_pos: tuple) -> tuple:
         """Returns (should_start, movie_list)"""
         self.text_box.update()
         self.sequel_input.update()
+        self.director_input.update()
+        self.actor_input.update()
         self.battle_button.update(mouse_pos)
         self.queue_battle_button.update(mouse_pos)
         self.sequel_battle_button.update(mouse_pos)
@@ -557,13 +595,31 @@ class InputScreen:
                 self.error_timer = 120
         return (False, [])
 
+    def check_director_click(self, mouse_pos: tuple, mouse_clicked: bool) -> tuple:
+        """Check if a director was clicked. Returns (name, movies) or (None, None)"""
+        if mouse_clicked:
+            for rect, name, movies in self.director_rects:
+                if rect.collidepoint(mouse_pos):
+                    return (name, movies)
+        return (None, None)
+
+    def check_actor_click(self, mouse_pos: tuple, mouse_clicked: bool) -> tuple:
+        """Check if an actor was clicked. Returns (name, movies) or (None, None)"""
+        if mouse_clicked:
+            for rect, name, movies in self.actor_rects:
+                if rect.collidepoint(mouse_pos):
+                    return (name, movies)
+        return (None, None)
+
     def check_spin(self, mouse_pos: tuple, mouse_clicked: bool):
         """Check if spin button was clicked."""
         if self.spin_button.is_clicked(mouse_pos, mouse_clicked) and not self.battle_wheel_spinning:
             self.battle_wheel_spinning = True
-            # Lots of randomness: random starting angle + random velocity
+            # Lots of randomness: random starting angle + random velocity with wide variance
             self.battle_wheel_angle = random.uniform(0, 360)
-            self.battle_wheel_velocity = random.uniform(12, 35)
+            base_velocity = random.uniform(15, 40)
+            velocity_multiplier = random.uniform(0.7, 1.4)
+            self.battle_wheel_velocity = base_velocity * velocity_multiplier
             self.battle_wheel_result = None
 
     def load_queue(self):
@@ -600,6 +656,140 @@ class InputScreen:
                                     self.docket_picks[docket_type].append((name, movie))
                 except:
                     pass
+
+    def load_lockouts(self):
+        """Load golden docket lockouts from file.
+
+        Simple format: Name|count (count = movies until unlocked)
+        """
+        self.lockouts = {}
+        if os.path.exists(self.config.golden_lockout_file):
+            try:
+                with open(self.config.golden_lockout_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and '|' in line:
+                            parts = line.split('|')
+                            if len(parts) >= 2:
+                                name = parts[0].strip()
+                                count = int(parts[1].strip())
+                                self.lockouts[name] = count
+            except:
+                pass
+
+    def load_directors(self):
+        """Load director queue from file."""
+        self.directors = {}
+        if os.path.exists(self.config.director_file):
+            try:
+                with open(self.config.director_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and '|' in line:
+                            parts = line.split('|', 1)
+                            if len(parts) == 2:
+                                name = parts[0].strip()
+                                movies = [m.strip() for m in parts[1].split(',') if m.strip()]
+                                if movies:
+                                    self.directors[name] = movies
+            except:
+                pass
+
+    def save_directors(self):
+        """Save director queue to file."""
+        lines = []
+        for name, movies in self.directors.items():
+            if movies:
+                lines.append(f"{name} | {', '.join(movies)}")
+        with open(self.config.director_file, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(lines))
+
+    def load_actors(self):
+        """Load actor queue from file."""
+        self.actors = {}
+        if os.path.exists(self.config.actor_file):
+            try:
+                with open(self.config.actor_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and '|' in line:
+                            parts = line.split('|', 1)
+                            if len(parts) == 2:
+                                name = parts[0].strip()
+                                movies = [m.strip() for m in parts[1].split(',') if m.strip()]
+                                if movies:
+                                    self.actors[name] = movies
+            except:
+                pass
+
+    def save_actors(self):
+        """Save actor queue to file."""
+        lines = []
+        for name, movies in self.actors.items():
+            if movies:
+                lines.append(f"{name} | {', '.join(movies)}")
+        with open(self.config.actor_file, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(lines))
+
+    def add_director_from_paste(self, text: str):
+        """Parse pasted text and add director with movies."""
+        print(f"[Director] add_director_from_paste called with: '{text}'")
+        text = text.strip()
+        if '|' in text:
+            parts = text.split('|', 1)
+            if len(parts) == 2:
+                name = parts[0].strip()
+                movies = [m.strip() for m in parts[1].split(',') if m.strip()]
+                print(f"[Director] Parsed: name='{name}', movies={movies}")
+                if name and movies:
+                    if name in self.directors:
+                        # Add movies to existing director
+                        self.directors[name].extend(movies)
+                    else:
+                        self.directors[name] = movies
+                    self.save_directors()
+                    print(f"[Director] Saved. Directors now: {self.directors}")
+                    return True
+        print(f"[Director] Failed to parse - needs 'Name | Movie1, Movie2' format")
+        return False
+
+    def add_actor_from_paste(self, text: str):
+        """Parse pasted text and add actor with movies."""
+        text = text.strip()
+        if '|' in text:
+            parts = text.split('|', 1)
+            if len(parts) == 2:
+                name = parts[0].strip()
+                movies = [m.strip() for m in parts[1].split(',') if m.strip()]
+                if name and movies:
+                    if name in self.actors:
+                        # Add movies to existing actor
+                        self.actors[name].extend(movies)
+                    else:
+                        self.actors[name] = movies
+                    self.save_actors()
+                    return True
+        return False
+
+    def remove_movie_from_director(self, director: str, movie: str):
+        """Remove a movie from a director's list."""
+        if director in self.directors:
+            movie_lower = movie.strip().lower()
+            self.directors[director] = [m for m in self.directors[director]
+                                         if m.strip().lower() != movie_lower]
+            if not self.directors[director]:
+                del self.directors[director]
+            self.save_directors()
+
+    def remove_movie_from_actor(self, actor: str, movie: str):
+        """Remove a movie from an actor's list."""
+        if actor in self.actors:
+            movie_lower = movie.strip().lower()
+            self.actors[actor] = [m for m in self.actors[actor]
+                                   if m.strip().lower() != movie_lower]
+            if not self.actors[actor]:
+                del self.actors[actor]
+            self.save_actors()
 
     def load_sequels(self):
         """Load sequel items from sequels.txt."""
@@ -780,6 +970,15 @@ class InputScreen:
 
         # Priority breakdown panel (between docket and center)
         self._draw_priority_breakdown(screen)
+
+        # Lockout panel (below docket picks)
+        self._draw_lockout_panel(screen)
+
+        # Actor panel (below lockout, left side)
+        self._draw_actor_panel(screen)
+
+        # Director panel (next to actor, right side)
+        self._draw_director_panel(screen)
 
         # Battle wheel (always visible, below sequel battle button)
         self._draw_battle_wheel(screen)
@@ -973,6 +1172,138 @@ class InputScreen:
                 screen.blit(entry, (panel_x + 10, y + 2))
                 y += line_height
 
+    def _draw_lockout_panel(self, screen: pygame.Surface):
+        """Draw panel showing who is locked out from golden docket."""
+        self.load_lockouts()
+        if not self.lockouts:
+            return
+
+        panel_x = 20
+        panel_y = 650  # Below docket picks panel
+        panel_width = 280
+        line_height = 22
+
+        # Calculate height based on content
+        panel_height = len(self.lockouts) * line_height + 40
+
+        # Panel background
+        panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+        panel_surface.fill((55, 40, 40, 230))
+        screen.blit(panel_surface, (panel_x, panel_y))
+        pygame.draw.rect(screen, (200, 100, 100), (panel_x, panel_y, panel_width, panel_height), 2, border_radius=8)
+
+        # Title
+        title = self.fonts['small'].render("LOCKED OUT", True, (255, 150, 150))
+        screen.blit(title, (panel_x + 10, panel_y + 8))
+
+        # Locked people - just names, no movie details
+        y = panel_y + 32
+        for name in self.lockouts.keys():
+            display_name = name if len(name) <= 25 else name[:23] + ".."
+            text = self.fonts['small'].render(f"  {display_name}", True, (200, 150, 150))
+            screen.blit(text, (panel_x + 10, y))
+            y += line_height
+
+    def _draw_actor_panel(self, screen: pygame.Surface):
+        """Draw the actor queue panel."""
+        panel_x = 310  # Aligned with priority panel
+        panel_y = 480  # Below priority panel
+        panel_width = 240
+        line_height = 24
+
+        # Calculate height
+        num_actors = len(self.actors)
+        panel_height = max(120, num_actors * line_height + 80)
+
+        # Panel background
+        panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+        panel_surface.fill((40, 40, 55, 230))
+        screen.blit(panel_surface, (panel_x, panel_y))
+        pygame.draw.rect(screen, (180, 130, 100), (panel_x, panel_y, panel_width, panel_height), 2, border_radius=8)
+
+        # Title
+        title = self.fonts['small'].render("ACTORS", True, (200, 160, 130))
+        screen.blit(title, (panel_x + 10, panel_y + 8))
+
+        # Input box for pasting
+        self.actor_input.rect = pygame.Rect(panel_x + 5, panel_y + 32, panel_width - 10, 42)
+        self.actor_input.draw(screen, bg_color=(30, 28, 25), text_color=(255, 230, 200), show_count=False)
+
+        # Placeholder text if empty
+        if not self.actor_input.text and not self.actor_input.active:
+            placeholder = self.fonts['tiny'].render("Name | Movie1, Movie2", True, UI_TEXT_DIM)
+            screen.blit(placeholder, (panel_x + 12, panel_y + 44))
+
+        # Actor list
+        self.actor_rects = []
+        y = panel_y + 75
+        for name, movies in self.actors.items():
+            display_name = name if len(name) <= 15 else name[:13] + ".."
+            count = len(movies)
+
+            # Clickable area
+            item_rect = pygame.Rect(panel_x + 5, y, panel_width - 10, line_height - 2)
+            self.actor_rects.append((item_rect, name, movies))
+
+            # Highlight on hover
+            mouse_pos = pygame.mouse.get_pos()
+            if item_rect.collidepoint(mouse_pos):
+                pygame.draw.rect(screen, (80, 70, 50), item_rect, border_radius=4)
+
+            text = self.fonts['tiny'].render(f"  {display_name} ({count})", True, (220, 200, 180))
+            screen.blit(text, (panel_x + 10, y + 2))
+            y += line_height
+
+    def _draw_director_panel(self, screen: pygame.Surface):
+        """Draw the director queue panel."""
+        panel_x = 560  # Right of actor panel
+        panel_y = 480  # Same row as actor panel
+        panel_width = 240
+        line_height = 24
+
+        # Calculate height
+        num_directors = len(self.directors)
+        panel_height = max(120, num_directors * line_height + 80)
+
+        # Panel background
+        panel_surface = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+        panel_surface.fill((40, 40, 55, 230))
+        screen.blit(panel_surface, (panel_x, panel_y))
+        pygame.draw.rect(screen, (180, 100, 180), (panel_x, panel_y, panel_width, panel_height), 2, border_radius=8)
+
+        # Title
+        title = self.fonts['small'].render("DIRECTORS", True, (200, 130, 200))
+        screen.blit(title, (panel_x + 10, panel_y + 8))
+
+        # Input box for pasting
+        self.director_input.rect = pygame.Rect(panel_x + 5, panel_y + 32, panel_width - 10, 42)
+        self.director_input.draw(screen, bg_color=(28, 25, 35), text_color=(230, 200, 255), show_count=False)
+
+        # Placeholder text if empty
+        if not self.director_input.text and not self.director_input.active:
+            placeholder = self.fonts['tiny'].render("Name | Movie1, Movie2", True, UI_TEXT_DIM)
+            screen.blit(placeholder, (panel_x + 12, panel_y + 44))
+
+        # Director list
+        self.director_rects = []
+        y = panel_y + 75
+        for name, movies in self.directors.items():
+            display_name = name if len(name) <= 15 else name[:13] + ".."
+            count = len(movies)
+
+            # Clickable area
+            item_rect = pygame.Rect(panel_x + 5, y, panel_width - 10, line_height - 2)
+            self.director_rects.append((item_rect, name, movies))
+
+            # Highlight on hover
+            mouse_pos = pygame.mouse.get_pos()
+            if item_rect.collidepoint(mouse_pos):
+                pygame.draw.rect(screen, (70, 50, 80), item_rect, border_radius=4)
+
+            text = self.fonts['tiny'].render(f"  {display_name} ({count})", True, (200, 180, 220))
+            screen.blit(text, (panel_x + 10, y + 2))
+            y += line_height
+
     def _draw_priority_breakdown(self, screen: pygame.Surface):
         """Draw the priority breakdown panel between docket and center."""
         # Position: to the right of docket panel (at x=20, width=280), left of center text box
@@ -981,9 +1312,11 @@ class InputScreen:
         panel_width = 240
         line_height = 20
 
-        # Priority items with colors (weakest to strongest, 6 to 1)
+        # Priority items with colors (weakest to strongest, 8 to 1)
         priorities = [
-            ("6. Battle!", UI_ACCENT, "Winner can be sent to queue"),
+            ("8. Battle!", UI_ACCENT, "Winner can be sent to queue"),
+            ("7. Actor Queue", (180, 130, 100), None),
+            ("6. Director Queue", (180, 100, 180), None),
             ("5. Queue", (200, 150, 100), None),
             ("4. Queue Battle", (200, 150, 100), "Winner must be watched"),
             ("3. Sequels", (100, 200, 100), None),
@@ -1748,13 +2081,207 @@ class LeaderboardScreen:
                 screen.blit(more_text, (panel_x + 10, item_y))
 
 
+class DocketClaimScreen:
+    """Screen to select who is claiming/using the golden docket."""
+    def __init__(self, fonts: dict, people: list, lockouts: dict = None, config=None):
+        """
+        people: list of all possible people who could claim
+        lockouts: dict of {name: {'phase': int, 'movie': str}} for locked-out people
+        """
+        self.fonts = fonts
+        self.config = config if config else get_config()
+        self.window_width = WINDOW_WIDTH
+        self.window_height = WINDOW_HEIGHT
+        self.people = [p for p in people if p not in (lockouts or {})]  # Filter out locked people
+        self.lockouts = lockouts or {}
+        self.name_rects = []  # [(name, rect), ...]
+        self.selected_name = None
+        self.scroll_offset = 0
+        self.custom_name_submitted = None  # Set when custom name is submitted via Enter
+
+        center_x = WINDOW_WIDTH // 2
+        self.back_button = Button(20, 20, 100, 40, "BACK", fonts['small'],
+                                  color=(100, 100, 100), hover_color=(130, 130, 130))
+
+        # Custom name input box - positioned at the bottom above locked out section
+        input_width = 300
+        input_height = 45
+        self.custom_input = TextBox(center_x - input_width // 2, 0, input_width, input_height, fonts['medium'])
+        self.custom_input.active = False
+        self._update_input_position()
+
+    def _update_input_position(self):
+        """Update the custom input position based on window size."""
+        center_x = self.window_width // 2
+        input_width = 300
+        # Position after the list of names, or at a fixed position if list is short
+        list_end_y = 180 + len(self.people) * 55 + 20
+        input_y = min(list_end_y, self.window_height - 200)
+        self.custom_input.rect = pygame.Rect(center_x - input_width // 2, input_y, input_width, 45)
+
+    def update_layout(self, window_width: int, window_height: int):
+        self.window_width = window_width
+        self.window_height = window_height
+        self.back_button.rect = pygame.Rect(20, 20, 100, 40)
+        self._update_input_position()
+
+    def update(self, mouse_pos: tuple):
+        self.custom_input.update()
+
+    def handle_event(self, event) -> bool:
+        """Handle events for text input. Returns True if custom name was submitted."""
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            # Check if clicked on the input box
+            if self.custom_input.rect.collidepoint(event.pos):
+                self.custom_input.active = True
+            else:
+                self.custom_input.active = False
+
+        if event.type == pygame.KEYDOWN and self.custom_input.active:
+            if event.key == pygame.K_RETURN:
+                # Submit custom name
+                name = self.custom_input.text.strip()
+                if name:
+                    self.custom_name_submitted = name
+                    return True
+            elif event.key == pygame.K_BACKSPACE:
+                self.custom_input.text = self.custom_input.text[:-1]
+            else:
+                # Add character
+                if event.unicode and event.unicode.isprintable():
+                    self.custom_input.text += event.unicode
+        return False
+
+    def handle_scroll(self, event):
+        """Handle mouse wheel scrolling."""
+        if event.type == pygame.MOUSEWHEEL:
+            self.scroll_offset -= event.y * 30
+            max_scroll = max(0, len(self.people) * 50 - 400)
+            self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
+
+    def check_back(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        return self.back_button.is_clicked(mouse_pos, mouse_clicked)
+
+    def check_name_click(self, mouse_pos: tuple, mouse_clicked: bool) -> str:
+        """Check if a name was clicked. Returns the name or None."""
+        if not mouse_clicked:
+            return None
+        for name, rect in self.name_rects:
+            if rect.collidepoint(mouse_pos):
+                return name
+        return None
+
+    def get_custom_name(self) -> str:
+        """Get the submitted custom name, if any."""
+        name = self.custom_name_submitted
+        self.custom_name_submitted = None  # Clear after reading
+        return name
+
+    def draw(self, screen: pygame.Surface):
+        # Background
+        screen.fill(self.config.ui_bg)
+
+        center_x = self.window_width // 2
+
+        # Title
+        title = self.fonts['large'].render("WHO IS USING GOLDEN DOCKET?", True, (255, 200, 100))
+        title_rect = title.get_rect(center=(center_x, 80))
+        screen.blit(title, title_rect)
+
+        # Subtitle
+        subtitle = self.fonts['small'].render("This person will be locked out until cooldown expires", True, UI_TEXT_DIM)
+        subtitle_rect = subtitle.get_rect(center=(center_x, 120))
+        screen.blit(subtitle, subtitle_rect)
+
+        # Draw names as clickable buttons
+        self.name_rects = []
+        start_y = 180 - self.scroll_offset
+        button_width = 300
+        button_height = 45
+        spacing = 55
+
+        for i, name in enumerate(self.people):
+            y = start_y + i * spacing
+            # Skip if off screen (but leave room for input box)
+            if y < 140 or y > self.custom_input.rect.y - 60:
+                continue
+
+            rect = pygame.Rect(center_x - button_width // 2, y, button_width, button_height)
+            self.name_rects.append((name, rect))
+
+            # Draw button background
+            mouse_pos = pygame.mouse.get_pos()
+            if rect.collidepoint(mouse_pos):
+                pygame.draw.rect(screen, (80, 70, 50), rect, border_radius=8)
+                pygame.draw.rect(screen, (255, 200, 100), rect, 2, border_radius=8)
+            else:
+                pygame.draw.rect(screen, (50, 45, 40), rect, border_radius=8)
+                pygame.draw.rect(screen, (150, 130, 80), rect, 1, border_radius=8)
+
+            # Draw name
+            name_surf = self.fonts['medium'].render(name, True, UI_TEXT)
+            name_rect = name_surf.get_rect(center=rect.center)
+            screen.blit(name_surf, name_rect)
+
+        # Draw "OR enter name:" label and custom input box
+        or_label = self.fonts['small'].render("OR enter a name:", True, UI_TEXT_DIM)
+        or_rect = or_label.get_rect(center=(center_x, self.custom_input.rect.y - 20))
+        screen.blit(or_label, or_rect)
+
+        # Draw custom input box
+        input_rect = self.custom_input.rect
+        # Background
+        bg_color = (60, 55, 50) if self.custom_input.active else (45, 40, 35)
+        pygame.draw.rect(screen, bg_color, input_rect, border_radius=8)
+        # Border
+        border_color = (255, 200, 100) if self.custom_input.active else (120, 100, 60)
+        pygame.draw.rect(screen, border_color, input_rect, 2, border_radius=8)
+
+        # Draw text in input box
+        if self.custom_input.text:
+            text_surf = self.fonts['medium'].render(self.custom_input.text, True, (255, 255, 255))
+            text_rect = text_surf.get_rect(midleft=(input_rect.x + 15, input_rect.centery))
+            screen.blit(text_surf, text_rect)
+        elif not self.custom_input.active:
+            # Placeholder text
+            placeholder = self.fonts['small'].render("Type name and press Enter", True, (100, 90, 80))
+            placeholder_rect = placeholder.get_rect(midleft=(input_rect.x + 15, input_rect.centery))
+            screen.blit(placeholder, placeholder_rect)
+
+        # Draw cursor if active
+        if self.custom_input.active:
+            cursor_x = input_rect.x + 15
+            if self.custom_input.text:
+                text_width = self.fonts['medium'].size(self.custom_input.text)[0]
+                cursor_x += text_width + 2
+            # Blinking cursor
+            if pygame.time.get_ticks() % 1000 < 500:
+                pygame.draw.line(screen, (255, 255, 255),
+                               (cursor_x, input_rect.y + 10),
+                               (cursor_x, input_rect.y + input_rect.height - 10), 2)
+
+        # Show locked out people at bottom
+        if self.lockouts:
+            locked_y = self.window_height - 80
+            locked_title = self.fonts['small'].render("Currently locked out:", True, (200, 100, 100))
+            screen.blit(locked_title, (center_x - 150, locked_y))
+
+            locked_names = ", ".join(self.lockouts.keys())
+            locked_text = self.fonts['tiny'].render(locked_names, True, (180, 120, 120))
+            screen.blit(locked_text, (center_x - 150, locked_y + 22))
+
+        # Back button
+        self.back_button.draw(screen)
+
+
 class ParticipantSelectScreen:
     """Screen to select which participants are present for the docket."""
-    def __init__(self, fonts: dict, permanent_people: list, people_counter: dict, docket_data: dict):
+    def __init__(self, fonts: dict, permanent_people: list, people_counter: dict, docket_data: dict, lockouts: dict = None):
         """
         permanent_people: list of names from permanentpeople.txt
         people_counter: dict of {name: count} from peoplecounter.txt
         docket_data: dict with 'golden', 'diamond', 'shit' keys containing {name: movie}
+        lockouts: dict of {name: {'phase': int, 'movie': str}} for locked-out people
         """
         print(f"[ParticipantSelectScreen] Init with permanent_people={permanent_people}, counter_keys={list(people_counter.keys())}")
         self.fonts = fonts
@@ -1765,6 +2292,7 @@ class ParticipantSelectScreen:
         self.permanent_people = permanent_people  # From file (truly permanent)
         self.people_counter = people_counter.copy()  # {name: count}
         self.docket_data = docket_data
+        self.lockouts = lockouts or {}  # {name: count} - count = movies until unlocked
 
         # All people from counter go in recurring section
         # Sort so people with docket entries (starred) come first
@@ -2389,6 +2917,215 @@ class DocketSpinScreen:
             if status:
                 status_rect = status.get_rect(center=(center_x, self.window_height - 40))
                 screen.blit(status, status_rect)
+
+
+class PersonWheelScreen:
+    """Screen that displays a spinning wheel for director/actor movie selection."""
+    def __init__(self, fonts: dict, person_type: str, person_name: str, movies: list, config=None):
+        """
+        person_type: 'director' or 'actor'
+        person_name: Name of the director/actor
+        movies: List of movie titles
+        """
+        from .docket import DocketWheel  # Import here to avoid circular import
+
+        self.fonts = fonts
+        self.config = config if config else get_config()
+        self.person_type = person_type
+        self.person_name = person_name
+        self.movies = movies
+        self.window_width = WINDOW_WIDTH
+        self.window_height = WINDOW_HEIGHT
+
+        # Create wheel entries - use 'final' type for no slivers
+        entries = [(person_name, movie) for movie in movies]
+
+        # Calculate wheel position and size
+        center = (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+        radius = min(WINDOW_WIDTH, WINDOW_HEIGHT) // 2 - 120
+
+        # Create the wheel with 'final' type (no slivers)
+        self.wheel = DocketWheel(entries, 'final', fonts, center, radius)
+
+        # Spin button
+        center_x = WINDOW_WIDTH // 2
+        self.spin_button = Button(center_x - 60, WINDOW_HEIGHT - 80, 120, 50, "SPIN!", fonts['medium'],
+                                  color=(120, 80, 150), hover_color=(160, 100, 200))
+
+        # Back button
+        self.back_button = Button(20, 20, 100, 40, "BACK", fonts['small'],
+                                  color=(100, 60, 60), hover_color=(150, 80, 80))
+
+    def update_layout(self, window_width: int, window_height: int):
+        self.window_width = window_width
+        self.window_height = window_height
+
+        # Update wheel center
+        center = (window_width // 2, window_height // 2)
+        radius = min(window_width, window_height) // 2 - 120
+        self.wheel.center = center
+        self.wheel.radius = radius
+
+        # Update button positions
+        center_x = window_width // 2
+        self.spin_button.rect = pygame.Rect(center_x - 60, window_height - 80, 120, 50)
+
+    def update(self, mouse_pos: tuple):
+        if self.wheel:
+            self.wheel.update()
+            self.spin_button.update(mouse_pos)
+            self.back_button.update(mouse_pos)
+            # Disable spin button while spinning or stopped
+            self.spin_button.enabled = not self.wheel.spinning and not self.wheel.stopped
+
+    def check_spin(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        if self.wheel and not self.wheel.spinning and not self.wheel.stopped:
+            return self.spin_button.is_clicked(mouse_pos, mouse_clicked)
+        return False
+
+    def check_back(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        return self.back_button.is_clicked(mouse_pos, mouse_clicked)
+
+    def is_stopped(self) -> bool:
+        return self.wheel and self.wheel.stopped
+
+    def get_result(self):
+        """Get the wheel result. Returns (person_name, movie) or None."""
+        if self.wheel:
+            result = self.wheel.get_result()
+            if result:
+                result_type, entry = result
+                if result_type == 'entry' and entry:
+                    return entry  # (person_name, movie)
+        return None
+
+    def draw(self, screen: pygame.Surface):
+        screen.fill(self.config.ui_bg)
+
+        if self.wheel:
+            self.wheel.draw(screen)
+
+        # Title
+        center_x = self.window_width // 2
+        if self.person_type == 'director':
+            title = f"DIRECTOR: {self.person_name}"
+            color = (200, 130, 200)
+        else:
+            title = f"ACTOR: {self.person_name}"
+            color = (200, 160, 130)
+
+        title_surf = self.fonts['large'].render(title, True, color)
+        title_rect = title_surf.get_rect(center=(center_x, 40))
+        screen.blit(title_surf, title_rect)
+
+        # Spin button
+        if self.spin_button.enabled:
+            self.spin_button.draw(screen)
+
+        # Back button
+        self.back_button.draw(screen)
+
+        # Status text
+        if self.wheel.spinning:
+            status = self.fonts['medium'].render("Spinning...", True, UI_TEXT_DIM)
+        elif self.wheel.stopped:
+            status = self.fonts['medium'].render("Click anywhere to continue", True, color)
+        else:
+            status = None
+
+        if status:
+            status_rect = status.get_rect(center=(center_x, self.window_height - 40))
+            screen.blit(status, status_rect)
+
+
+class PersonWheelResultScreen:
+    """Screen showing the result of a director/actor wheel spin."""
+    def __init__(self, fonts: dict, config=None):
+        self.fonts = fonts
+        self.config = config if config else get_config()
+        self.window_width = WINDOW_WIDTH
+        self.window_height = WINDOW_HEIGHT
+        self.person_type = None  # 'director' or 'actor'
+        self.person_name = None
+        self.movie = None
+        self.animation_timer = 0
+
+        center_x = WINDOW_WIDTH // 2
+        self.choose_button = Button(center_x - 100, 700, 200, 60, "CHOOSE", fonts['large'],
+                                    color=(100, 150, 100), hover_color=(130, 200, 130))
+
+    def update_layout(self, window_width: int, window_height: int):
+        self.window_width = window_width
+        self.window_height = window_height
+        center_x = window_width // 2
+        self.choose_button.rect = pygame.Rect(center_x - 100, 700, 200, 60)
+
+    def set_result(self, person_type: str, person_name: str, movie: str):
+        """Set the result to display."""
+        self.person_type = person_type
+        self.person_name = person_name
+        self.movie = movie
+        self.animation_timer = 0
+
+    def update(self, mouse_pos: tuple):
+        self.animation_timer += 1
+        self.choose_button.update(mouse_pos)
+
+    def check_choose(self, mouse_pos: tuple, mouse_clicked: bool) -> bool:
+        return self.choose_button.is_clicked(mouse_pos, mouse_clicked)
+
+    def draw(self, screen: pygame.Surface):
+        # Background
+        screen.fill(self.config.ui_bg)
+
+        center_x = self.window_width // 2
+        center_y = self.window_height // 2
+
+        # Determine colors based on type
+        if self.person_type == 'director':
+            accent_color = (200, 130, 200)
+            label = "DIRECTOR PICK"
+        else:
+            accent_color = (200, 160, 130)
+            label = "ACTOR PICK"
+
+        # Animated glow effect
+        glow_alpha = int(128 + 64 * math.sin(self.animation_timer * 0.05))
+        glow_size = 400 + int(20 * math.sin(self.animation_timer * 0.03))
+        glow_surface = pygame.Surface((glow_size, glow_size), pygame.SRCALPHA)
+        pygame.draw.circle(glow_surface, (*accent_color, glow_alpha // 4), (glow_size // 2, glow_size // 2), glow_size // 2)
+        screen.blit(glow_surface, (center_x - glow_size // 2, center_y - glow_size // 2 - 100))
+
+        # Label
+        label_surf = self.fonts['medium'].render(label, True, accent_color)
+        label_rect = label_surf.get_rect(center=(center_x, center_y - 200))
+        screen.blit(label_surf, label_rect)
+
+        # Person name
+        name_surf = self.fonts['large'].render(self.person_name, True, UI_TEXT)
+        name_rect = name_surf.get_rect(center=(center_x, center_y - 140))
+        screen.blit(name_surf, name_rect)
+
+        # "presents" text
+        presents_surf = self.fonts['small'].render("presents", True, UI_TEXT_DIM)
+        presents_rect = presents_surf.get_rect(center=(center_x, center_y - 80))
+        screen.blit(presents_surf, presents_rect)
+
+        # Movie title (the winner) - large and prominent
+        movie_surf = self.fonts['huge'].render(self.movie, True, accent_color)
+        # Scale down if too wide
+        if movie_surf.get_width() > self.window_width - 100:
+            movie_surf = self.fonts['large'].render(self.movie, True, accent_color)
+        movie_rect = movie_surf.get_rect(center=(center_x, center_y))
+        screen.blit(movie_surf, movie_rect)
+
+        # Choose button
+        self.choose_button.draw(screen)
+
+        # Instruction text
+        instruction = self.fonts['small'].render("Click CHOOSE to watch this movie", True, UI_TEXT_DIM)
+        instruction_rect = instruction.get_rect(center=(center_x, 780))
+        screen.blit(instruction, instruction_rect)
 
 
 def create_fonts() -> dict:

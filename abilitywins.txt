@@ -1,5 +1,6 @@
-amadeus: 14
+amadeus: 15
 andy_dufresne: 1
+barry_lyndon: 1
 batman: 4
 berserker: 4
 brutal: 2
@@ -16,8 +17,8 @@ ice: 3
 inflation: 2
 interstellar: 1
 john_wick: 1
-kamehameha: 2
-kevin_mcallister: 2
+kamehameha: 3
+kevin_mcallister: 3
 kill_bill: 2
 little_miss_sunshine: 5
 luffy: 5
@@ -27,7 +28,7 @@ mutually_assured: 1
 neo: 4
 oppenheimer: 1
 portal: 1
-rage: 3
+rage: 4
 shelob: 4
 shrinking: 2
 swamp_thing: 4
@@ -36,7 +37,7 @@ the_obelisk: 2
 the_prestige: 1
 tiny: 3
 vampire: 4
-vengeance: 2
+vengeance: 3
 venom: 12
 zombie: 5
 zoro: 2

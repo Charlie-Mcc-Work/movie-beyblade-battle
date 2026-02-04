@@ -13,6 +13,27 @@ Lars and the Real Girl
 Dead Poets Society
 30 days of night
 Marley and Me
+Fear and Desire
+Dreams (1990)
+Stray Dog (1949)
+Python
+Drunken Angel
+The Idiot
+Sanshiro Sugata
+Hard Eight
+Home Alone 2
+Sixteen Candles
+Planes Trains and Automobiles
+Daddy Longlegs
+Heaven Knows What
+Insomnia
+Titanic
+True Lies
+Tomorrowland
+Following
+Enemy
+Polytechnique
+Maelstrom
 Fallen Angels
 Season of the Witch
 Corpse Bride
@@ -31,6 +52,18 @@ It's What's Inside
 The A-Team
 The Marksman
 Ambulance
+Memories of Murder
+Okja
+The Host
+Mother
+Barking Dogs Never Bite
+Tokyo!
+Bound
+Speed Racer
+Cloud Atlas
+Jupiter Ascending
+Samurai Rebellion
+The Inheritance
 The Iceman
 Honest Thief
 The Highwaymen
@@ -115,7 +148,6 @@ Charlie's Angels
 A.I. Artificial Intelligence
 The Cranes are Flying
 Witness for the Prosecution
-Boyz n the Hood
 Barton Fink
 Thelma & Louise
 JFK
@@ -188,7 +220,6 @@ Wolfwalkers
 Shaft
 The Lighthouse
 The Favourite
-First Man
 War Dogs
 Burning
 Gran Torino
@@ -241,7 +272,6 @@ Alamar/To the Sea
 Vice
 49 Up
 The Piano Teacher
-The Weaping Meadow
 Tarnation
 Airplane Vs Volcano
 Unknown Soldier

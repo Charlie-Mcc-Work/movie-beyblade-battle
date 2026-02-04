@@ -102,10 +102,10 @@ SHIT_SEGMENT_COLORS = [
 ]
 
 # Docket wheel physics
-DOCKET_SPIN_MIN = 12.0   # Min initial angular velocity (rad/s)
-DOCKET_SPIN_MAX = 20.0   # Max initial angular velocity (rad/s)
+DOCKET_SPIN_MIN = 18.0   # Min initial angular velocity (rad/s)
+DOCKET_SPIN_MAX = 35.0   # Max initial angular velocity (rad/s)
 DOCKET_FRICTION = 0.985  # Per-frame velocity multiplier
-DOCKET_FLAP_DRAG = 0.015 # Extra slowdown per peg hit
+DOCKET_FLAP_DRAG = 0.012 # Extra slowdown per peg hit (reduced for longer spins)
 DOCKET_STOP_THRESHOLD = 0.08  # Velocity below this = stopped
 DOCKET_PEG_COUNT = 20    # Number of pegs around wheel edge
 
@@ -161,10 +161,14 @@ STATE_BATTLE = 'battle'
 STATE_HEAT_TRANSITION = 'heat_transition'
 STATE_VICTORY = 'victory'
 STATE_LEADERBOARD = 'leaderboard'
+STATE_DOCKET_CLAIM = 'docket_claim'  # Who is using golden docket?
 STATE_DOCKET_SELECT = 'docket_select'
 STATE_DOCKET_SPIN = 'docket_spin'
 STATE_DOCKET_RESULT = 'docket_result'
 STATE_DOCKET_ZOOM = 'docket_zoom'
+STATE_DIRECTOR_WHEEL = 'director_wheel'
+STATE_ACTOR_WHEEL = 'actor_wheel'
+STATE_PERSON_WHEEL_RESULT = 'person_wheel_result'
 
 # File loading
 MOVIE_LIST_FILE = "movies.txt"

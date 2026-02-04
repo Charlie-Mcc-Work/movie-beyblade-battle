@@ -4,14 +4,12 @@ Ocean's Twelve
 saw 2
 The Good the Bad and the Ugly
 Scream 3
-Paranormal Activity: Next of Kin
 Tron
 The Omen 2
 Dumb and Dumber To
 28 years later: Bone Temple
 John Wick 3
 Cars 3
-Paddington 2
 Bourne Supremacy
 Predator 2
 Spider-man
@@ -23,7 +21,6 @@ The Santa Clause 2
 Red 2
 Madagascar 2
 Halloween 2
-Anaconda 2
 Argyle
 Home Alone 2
 Hunger Games 3
@@ -31,3 +28,4 @@ Alien 4
 Starship Troopers
 Jurassic Park II
 Doctor Sleep
+Paddington 2

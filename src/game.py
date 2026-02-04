@@ -6,7 +6,8 @@ import threading
 from .constants import (
     WINDOW_WIDTH, WINDOW_HEIGHT, FPS, UI_BG, WHITE, LIGHT_BLUE,
     STATE_INPUT, STATE_BATTLE, STATE_HEAT_TRANSITION, STATE_VICTORY, STATE_LEADERBOARD,
-    STATE_DOCKET_SELECT, STATE_DOCKET_SPIN, STATE_DOCKET_RESULT, STATE_DOCKET_ZOOM,
+    STATE_DOCKET_CLAIM, STATE_DOCKET_SELECT, STATE_DOCKET_SPIN, STATE_DOCKET_RESULT, STATE_DOCKET_ZOOM,
+    STATE_DIRECTOR_WHEEL, STATE_ACTOR_WHEEL, STATE_PERSON_WHEEL_RESULT,
     BEYBLADE_COLORS, ABILITY_CHANCE, ABILITIES, ARENA_RADIUS, AVATAR_ABILITIES
 )
 from .config import get_config, ModeConfig
@@ -15,7 +16,8 @@ from .arena import Arena
 from .effects import EffectsManager
 from .avatar import AvatarManager, AvatarState
 from .ui import (InputScreen, BattleHUD, HeatTransitionScreen, VictoryScreen, LeaderboardScreen,
-                 ParticipantSelectScreen, DocketResultScreen, DocketSpinScreen, create_fonts)
+                 DocketClaimScreen, ParticipantSelectScreen, DocketResultScreen, DocketSpinScreen,
+                 PersonWheelScreen, PersonWheelResultScreen, create_fonts)
 from .docket import DocketWheel, DocketZoomTransition
 
 
@@ -61,15 +63,26 @@ class Game:
         self.leaderboard_screen = LeaderboardScreen(self.fonts, self.config)
 
         # Docket screens (initialized when needed)
+        self.docket_claim_screen = None
         self.participant_select_screen = None
         self.docket_spin_screen = DocketSpinScreen(self.fonts)
         self.docket_result_screen = DocketResultScreen(self.fonts)
 
         # Docket state
         self.docket_participants = []  # Selected participant names
+        self.docket_claimer = None  # Who is using/claiming the golden docket
         self.current_docket_type = 'golden'  # 'golden', 'diamond', or 'shit'
         self.docket_data = {'golden': {}, 'diamond': {}, 'shit': {}}
         self.people_counter = {}  # {name: count} for recurring people
+        self.golden_lockouts = {}  # {name: {'phase': 1 or 2, 'movie': str}}
+
+        # Director/Actor wheel state
+        self.director_wheel = None
+        self.actor_wheel = None
+        self.current_person_wheel_name = None  # Name of director/actor being spun
+        self.current_person_wheel_type = None  # 'director' or 'actor'
+        self.person_wheel_screen = None
+        self.person_wheel_result_screen = PersonWheelResultScreen(self.fonts, self.config)
 
         # Always update layouts for actual window size
         self.arena.update_center(self.window_width, self.window_height)
@@ -80,6 +93,7 @@ class Game:
         self.leaderboard_screen.update_layout(self.window_width, self.window_height)
         self.docket_spin_screen.update_layout(self.window_width, self.window_height)
         self.docket_result_screen.update_layout(self.window_width, self.window_height)
+        self.person_wheel_result_screen.update_layout(self.window_width, self.window_height)
 
         self.beyblades: list[Beyblade] = []
         self.eliminated: list[str] = []  # Current heat eliminations
@@ -546,6 +560,7 @@ class Game:
         self.leaderboard_screen.update_layout(new_width, new_height)
         self.docket_spin_screen.update_layout(new_width, new_height)
         self.docket_result_screen.update_layout(new_width, new_height)
+        self.person_wheel_result_screen.update_layout(new_width, new_height)
         if self.participant_select_screen:
             self.participant_select_screen.update_layout(new_width, new_height)
 
@@ -586,6 +601,10 @@ class Game:
 
             if self.state == STATE_LEADERBOARD:
                 self.leaderboard_screen.handle_scroll(event)
+
+            if self.state == STATE_DOCKET_CLAIM and self.docket_claim_screen:
+                self.docket_claim_screen.handle_scroll(event)
+                self.docket_claim_screen.handle_event(event)
 
             if self.state == STATE_DOCKET_RESULT:
                 if self.docket_result_screen.handle_event(event):
@@ -668,10 +687,12 @@ class Game:
                 self.is_simulation = False
                 self.start_battle(sequel_movies)
 
-            # Check for queue item click (to remove from queue)
+            # Check for queue item click (to select/watch from queue)
             clicked_queue_item = self.input_screen.check_queue_click(mouse_pos, mouse_clicked)
             if clicked_queue_item:
                 self.input_screen.remove_from_queue(clicked_queue_item)
+                # Update lockouts - a movie was selected
+                self._update_lockouts_on_movie_watched(clicked_queue_item)
 
             # Check for sequel add button click
             self.input_screen.check_sequel_add(mouse_pos, mouse_clicked)
@@ -680,6 +701,8 @@ class Game:
             clicked_sequel_item = self.input_screen.check_sequel_click(mouse_pos, mouse_clicked)
             if clicked_sequel_item:
                 self.input_screen.select_sequel(clicked_sequel_item)
+                # Update lockouts - a movie was selected
+                self._update_lockouts_on_movie_watched(clicked_sequel_item)
 
             # Check for spin button
             self.input_screen.check_spin(mouse_pos, mouse_clicked)
@@ -687,7 +710,19 @@ class Game:
             # Check for Golden Docket button click
             if self.input_screen.check_docket(mouse_pos, mouse_clicked):
                 print(f"[UI] Golden Docket button clicked")
-                self._start_docket_select()
+                self._start_docket_claim()
+
+            # Check for director click
+            director_name, director_movies = self.input_screen.check_director_click(mouse_pos, mouse_clicked)
+            if director_name and director_movies:
+                print(f"[UI] Director clicked: {director_name} with {len(director_movies)} movies")
+                self._start_director_wheel(director_name, director_movies)
+
+            # Check for actor click
+            actor_name, actor_movies = self.input_screen.check_actor_click(mouse_pos, mouse_clicked)
+            if actor_name and actor_movies:
+                print(f"[UI] Actor clicked: {actor_name} with {len(actor_movies)} movies")
+                self._start_actor_wheel(actor_name, actor_movies)
 
             # Check for Quit button click
             if self.input_screen.check_quit(mouse_pos, mouse_clicked):
@@ -787,6 +822,29 @@ class Game:
                 self.is_simulation = False
                 self.state = STATE_INPUT
 
+        elif self.state == STATE_DOCKET_CLAIM:
+            self.docket_claim_screen.update(mouse_pos)
+
+            # Check for back button
+            if self.docket_claim_screen.check_back(mouse_pos, mouse_clicked):
+                self.state = STATE_INPUT
+                return
+
+            # Check for name click
+            claimed_name = self.docket_claim_screen.check_name_click(mouse_pos, mouse_clicked)
+
+            # Check for custom name submission (via Enter key in text box)
+            if not claimed_name:
+                claimed_name = self.docket_claim_screen.get_custom_name()
+
+            if claimed_name:
+                print(f"[Docket] {claimed_name} is claiming golden docket")
+                self.docket_claimer = claimed_name
+                # Lock out the claimer immediately
+                self._add_golden_lockout(claimed_name, "pending")
+                # Proceed to participant selection (or direct spin in girlfriend mode)
+                self._start_docket_select()
+
         elif self.state == STATE_DOCKET_SELECT:
             self.participant_select_screen.update(mouse_pos)
             self.participant_select_screen.handle_click(mouse_pos, mouse_clicked)
@@ -839,9 +897,67 @@ class Game:
                 self._update_golden_docket(self.docket_result_screen.winner_name, new_movie)
 
             if self.docket_result_screen.check_title(mouse_pos, mouse_clicked):
+                # Update lockouts - this movie was watched, progress phases
+                winning_movie = self.docket_result_screen.winner_movie
+                if winning_movie:
+                    self._update_lockouts_on_movie_watched(winning_movie)
+                # Reload lockouts for display on home screen
+                self.input_screen.load_lockouts()
                 self.state = STATE_INPUT
             elif self.docket_result_screen.check_quit(mouse_pos, mouse_clicked):
                 self.running = False
+
+        elif self.state == STATE_DIRECTOR_WHEEL:
+            self.person_wheel_screen.update(mouse_pos)
+
+            # Check for back button
+            if self.person_wheel_screen.check_back(mouse_pos, mouse_clicked):
+                self.state = STATE_INPUT
+                return
+
+            # Check for spin
+            if self.person_wheel_screen.check_spin(mouse_pos, mouse_clicked):
+                self.person_wheel_screen.wheel.spin()
+
+            # Check for result (wheel stopped and clicked)
+            if self.person_wheel_screen.is_stopped() and mouse_clicked:
+                result = self.person_wheel_screen.get_result()
+                if result:
+                    person_name, movie = result
+                    self.person_wheel_result_screen.set_result('director', person_name, movie)
+                    self.state = STATE_PERSON_WHEEL_RESULT
+
+        elif self.state == STATE_ACTOR_WHEEL:
+            self.person_wheel_screen.update(mouse_pos)
+
+            # Check for back button
+            if self.person_wheel_screen.check_back(mouse_pos, mouse_clicked):
+                self.state = STATE_INPUT
+                return
+
+            # Check for spin
+            if self.person_wheel_screen.check_spin(mouse_pos, mouse_clicked):
+                self.person_wheel_screen.wheel.spin()
+
+            # Check for result (wheel stopped and clicked)
+            if self.person_wheel_screen.is_stopped() and mouse_clicked:
+                result = self.person_wheel_screen.get_result()
+                if result:
+                    person_name, movie = result
+                    self.person_wheel_result_screen.set_result('actor', person_name, movie)
+                    self.state = STATE_PERSON_WHEEL_RESULT
+
+        elif self.state == STATE_PERSON_WHEEL_RESULT:
+            self.person_wheel_result_screen.update(mouse_pos)
+
+            # Check for choose button
+            if self.person_wheel_result_screen.check_choose(mouse_pos, mouse_clicked):
+                # Handle the result
+                self._handle_person_wheel_result(
+                    self.person_wheel_result_screen.person_type,
+                    self.person_wheel_result_screen.person_name,
+                    self.person_wheel_result_screen.movie
+                )
 
     def update_battle(self):
         # Increment frame counter
@@ -2090,6 +2206,9 @@ class Game:
         self.input_screen.load_queue()
         self.input_screen.load_sequels()
 
+        # Update golden docket lockouts
+        self._update_lockouts_on_movie_watched(base_name)
+
     def _queue_movie(self, movie_name: str):
         """Move winner from movies.txt to queue.txt and restart."""
         # Get base name (strip ability suffixes)
@@ -2259,6 +2378,66 @@ class Game:
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write('\n'.join(lines))
 
+    def _load_golden_lockouts(self) -> dict:
+        """Load golden docket lockouts from file.
+
+        Simple format: Name|count (count = movies until unlocked)
+        """
+        lockouts = {}
+        if os.path.exists(self.config.golden_lockout_file):
+            try:
+                with open(self.config.golden_lockout_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and '|' in line:
+                            parts = line.split('|')
+                            if len(parts) >= 2:
+                                name = parts[0].strip()
+                                count = int(parts[1].strip())
+                                lockouts[name] = count
+            except:
+                pass
+        self.golden_lockouts = lockouts
+        return lockouts
+
+    def _save_golden_lockouts(self):
+        """Save golden docket lockouts to file."""
+        lines = []
+        for name, count in self.golden_lockouts.items():
+            lines.append(f"{name}|{count}")
+        with open(self.config.golden_lockout_file, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(lines))
+
+    def _add_golden_lockout(self, name: str, movie: str = None):
+        """Add person to golden docket lockout.
+
+        They must wait for 2 movie selections before unlocking.
+        """
+        self._load_golden_lockouts()
+        self.golden_lockouts[name] = 2  # Wait for 2 movie selections
+        self._save_golden_lockouts()
+
+    def _update_lockouts_on_movie_watched(self, movie: str = None):
+        """Update lockout counts when any movie is selected.
+
+        Decrement everyone's count. Remove when count reaches 0.
+        """
+        self._load_golden_lockouts()
+
+        to_remove = []
+        for name in self.golden_lockouts:
+            self.golden_lockouts[name] -= 1
+            if self.golden_lockouts[name] <= 0:
+                to_remove.append(name)
+
+        for name in to_remove:
+            del self.golden_lockouts[name]
+
+        self._save_golden_lockouts()
+        # Reload input screen lockouts display
+        if hasattr(self.input_screen, 'load_lockouts'):
+            self.input_screen.load_lockouts()
+
     def _load_permanent_people(self) -> list:
         """Load permanent people list from file or config."""
         # If config has fixed permanent members (girlfriend mode), use those
@@ -2340,6 +2519,36 @@ class Game:
         if self.config.has_shit_docket:
             self._save_docket_file(self.config.shit_docket_file, self.docket_data['shit'])
 
+    def _start_docket_claim(self):
+        """Start the docket claim screen - who is using golden docket?"""
+        print(f"[Docket] _start_docket_claim called")
+
+        # Load lockouts to filter out locked people
+        self._load_golden_lockouts()
+
+        # Get all possible people who could claim
+        permanent_people = self._load_permanent_people()
+        people_counter = self._load_people_counter()
+
+        # Combine all people (unique)
+        all_people = list(set(permanent_people + list(people_counter.keys())))
+        all_people.sort()
+
+        if not all_people:
+            print(f"[Docket] No people available to claim")
+            return
+
+        # Create claim screen
+        self.docket_claim_screen = DocketClaimScreen(
+            self.fonts,
+            all_people,
+            self.golden_lockouts,
+            self.config
+        )
+        self.docket_claim_screen.update_layout(self.window_width, self.window_height)
+        self.state = STATE_DOCKET_CLAIM
+        print(f"[Docket] State set to STATE_DOCKET_CLAIM with {len(all_people)} people")
+
     def _start_docket_select(self):
         """Start the docket participant selection screen."""
         print(f"[Docket] _start_docket_select called, cwd={os.getcwd()}")
@@ -2349,6 +2558,18 @@ class Game:
         self.docket_data['diamond'] = self._load_docket_file(self.config.diamond_docket_file)
         self.docket_data['shit'] = self._load_docket_file(self.config.shit_docket_file)
         print(f"[Docket] Loaded docket files - golden: {len(self.docket_data['golden'])} entries")
+
+        # Load lockouts and filter locked-out people from ALL dockets
+        self._load_golden_lockouts()
+        locked_names = set(self.golden_lockouts.keys())
+        for name in locked_names:
+            if name in self.docket_data['golden']:
+                del self.docket_data['golden'][name]
+            if name in self.docket_data['diamond']:
+                del self.docket_data['diamond'][name]
+            if name in self.docket_data['shit']:
+                del self.docket_data['shit'][name]
+        print(f"[Docket] Filtered out locked users from all dockets: {locked_names}")
 
         # In girlfriend mode, skip participant selection and go straight to spin
         if self.config.permanent_members and not self.config.can_add_members:
@@ -2376,7 +2597,8 @@ class Game:
             self.fonts,
             permanent_people,
             people_counter,
-            self.docket_data
+            self.docket_data,
+            self.golden_lockouts
         )
         self.participant_select_screen.update_layout(self.window_width, self.window_height)
         self.state = STATE_DOCKET_SELECT
@@ -2643,6 +2865,51 @@ class Game:
             queue = [m for m in queue if m.strip().lower() != movie_lower]
             with open(self.config.queue_file, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(queue))
+
+    def _start_director_wheel(self, director_name: str, movies: list):
+        """Start the director movie selection wheel."""
+        self.current_person_wheel_name = director_name
+        self.current_person_wheel_type = 'director'
+        self.person_wheel_screen = PersonWheelScreen(
+            self.fonts, 'director', director_name, movies, self.config
+        )
+        self.person_wheel_screen.update_layout(self.window_width, self.window_height)
+        self.state = STATE_DIRECTOR_WHEEL
+
+    def _start_actor_wheel(self, actor_name: str, movies: list):
+        """Start the actor movie selection wheel."""
+        self.current_person_wheel_name = actor_name
+        self.current_person_wheel_type = 'actor'
+        self.person_wheel_screen = PersonWheelScreen(
+            self.fonts, 'actor', actor_name, movies, self.config
+        )
+        self.person_wheel_screen.update_layout(self.window_width, self.window_height)
+        self.state = STATE_ACTOR_WHEEL
+
+    def _handle_person_wheel_result(self, person_type: str, person_name: str, movie: str):
+        """Handle the result of a director/actor wheel spin."""
+        print(f"[Wheel] {person_type.title()} wheel result: {person_name} - {movie}")
+
+        # Remove movie from the person's list
+        if person_type == 'director':
+            self.input_screen.remove_movie_from_director(person_name, movie)
+        else:
+            self.input_screen.remove_movie_from_actor(person_name, movie)
+
+        # Add movie to watched
+        watched = []
+        if os.path.exists(self.config.watched_file):
+            with open(self.config.watched_file, 'r', encoding='utf-8') as f:
+                watched = [line.strip() for line in f.read().strip().split('\n') if line.strip()]
+        watched.append(movie)
+        with open(self.config.watched_file, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(watched))
+
+        # Update lockouts (this movie was watched)
+        self._update_lockouts_on_movie_watched(movie)
+
+        # Return to input screen
+        self.state = STATE_INPUT
 
     def _end_current_heat(self, survivors: list):
         """Handle end of a heat - advance winners or end tournament."""
@@ -3284,6 +3551,9 @@ class Game:
         elif self.state == STATE_LEADERBOARD:
             self.leaderboard_screen.draw(self.screen)
 
+        elif self.state == STATE_DOCKET_CLAIM:
+            self.docket_claim_screen.draw(self.screen)
+
         elif self.state == STATE_DOCKET_SELECT:
             self.participant_select_screen.draw(self.screen)
 
@@ -3292,6 +3562,12 @@ class Game:
 
         elif self.state == STATE_DOCKET_RESULT:
             self.docket_result_screen.draw(self.screen)
+
+        elif self.state in (STATE_DIRECTOR_WHEEL, STATE_ACTOR_WHEEL):
+            self.person_wheel_screen.draw(self.screen)
+
+        elif self.state == STATE_PERSON_WHEEL_RESULT:
+            self.person_wheel_result_screen.draw(self.screen)
 
         pygame.display.flip()
 

@@ -27,6 +27,9 @@ class ModeConfig:
         self.people_counter_file = "peoplecounter.txt"
         self.ability_wins_file = "abilitywins.txt"
         self.ability_stats_file = "abilitystats.txt"
+        self.golden_lockout_file = "goldenlockout.txt"
+        self.director_file = "directors.txt"
+        self.actor_file = "actors.txt"
 
         # UI Colors
         self.ui_bg = (25, 25, 35)
@@ -62,6 +65,9 @@ class ModeConfig:
         self.people_counter_file = "gf_peoplecounter.txt"
         self.ability_wins_file = "gf_abilitywins.txt"
         self.ability_stats_file = "gf_abilitystats.txt"
+        self.golden_lockout_file = "gf_goldenlockout.txt"
+        self.director_file = "gf_directors.txt"
+        self.actor_file = "gf_actors.txt"
 
         # UI Colors - Purple theme
         self.ui_bg = (35, 25, 45)  # Dark purple
